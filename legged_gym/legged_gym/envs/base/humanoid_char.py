@@ -503,10 +503,17 @@ def convert_to_local_root_body_pos(root_rot, body_pos):
     root_inv_rot = torch_utils.quat_conjugate(root_rot)
     root_rot_expand = root_inv_rot.unsqueeze(-2)
     root_rot_expand = root_rot_expand.repeat((1, body_pos.shape[1], 1))
-    flat_root_rot_expand = root_rot_expand.reshape(root_rot_expand.shape[0] * root_rot_expand.shape[1], 
+    flat_root_rot_expand = root_rot_expand.reshape(root_rot_expand.shape[0] * root_rot_expand.shape[1],
                                                    root_rot_expand.shape[2])
     flat_body_pos = body_pos.reshape(body_pos.shape[0] * body_pos.shape[1], body_pos.shape[2])
     flat_local_body_pos = torch_utils.quat_rotate(flat_root_rot_expand, flat_body_pos)
     local_body_pos = flat_local_body_pos.reshape(body_pos.shape[0], body_pos.shape[1], body_pos.shape[2])
 
     return local_body_pos
+
+
+def compute_local_body_pos(root_pos, root_rot, body_pos_global):
+    # type: (Tensor, Tensor, Tensor) -> Tensor
+    """Convert global rigid body positions to root-relative local frame."""
+    body_pos_rel = body_pos_global - root_pos.unsqueeze(1)
+    return convert_to_local_root_body_pos(root_rot, body_pos_rel)

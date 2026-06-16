@@ -15,6 +15,6 @@ python train.py --task "${task_name}" \
                 --proj_name "${proj_name}" \
                 --exptid "${exptid}" \
                 --device "${device}" \
-                # --resume \
+                --resume \
+                --resumeid "${exptid}" \
                 # --debug
-                # --resumeid xxx

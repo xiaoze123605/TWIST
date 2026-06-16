@@ -1,5 +1,587 @@
-root_path: /home/yanjieze/projects/g1_wbc/humanoid-motion-imitation/track_dataset/twist_motion_dataset
+root_path: /home/hank/TWIST/track_dataset/twist_motion_dataset
 motions:
+# - file: mydata/1.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/2.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/3.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/4.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/5.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/6.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/7.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/8.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/9.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/10.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/11.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/12.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/13.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/14.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/15.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/16.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/17.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/18.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/19.pkl
+#   weight: 150.0
+#   description: general movement
+# - file: mydata/20.pkl
+#   weight: 150.0
+#   description: general movement
+
+- file: mydata2/1_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/1_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/2_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/3_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/4_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/4_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/4_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/4_seg03.pkl
+  weight: 150.0
+  description: general movement 
+- file: mydata2/4_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/5_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/6_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/7_seg00.pkl
+  weight: 100.0
+  description: general movement
+- file: mydata2/7_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/8_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/9_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/10_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/11_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/12_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/13_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/13_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/13_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/13_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/13_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/14_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/14_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/14_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/14_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/14_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/15_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/15_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/16_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/16_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/16_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/15_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/17_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/17_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/18_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/18_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/19_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/20_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/20_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/21_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/22_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata2/23_seg00.pkl
+  weight: 150.0
+  description: general movement
+
+
+- file: mydata3/24_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/25_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/25_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/25_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/25_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/26_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/27_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/28_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/28_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/29_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/30_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/31_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/31_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/32_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/33_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/34_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/35_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/36_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/36_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/37e_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/38_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/39_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/40_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/41_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/41_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/41_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/42_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/43_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/43_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/43_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/43_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/44_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/45_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/45_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/46_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/46_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/46_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/47_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/47_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/47_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/47_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/48_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/48_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/48_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/48_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/49_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/49_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/49_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/49_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/50_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/51_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/51_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/51_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/52_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/52_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/53_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/53_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/54_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/55_seg05.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/56_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/57_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/58_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/58_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/58_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/59_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/59_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/59_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/60_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/61_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/62_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/63_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/64_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/64_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/65_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/66_seg05.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/67_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/67_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/67_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/67_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg05.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg06.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/68_seg07.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/69_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/69_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/69_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/70_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/70_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/70_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/71_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/72_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/72_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/73_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/73_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/73_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/74_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/74_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/75_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/75_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/76_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/76_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/77_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/77_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/77_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/77_seg03.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/77_seg04.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/78_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/78_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/78_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/79_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/79_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/79_seg02.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/80_seg00.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/80_seg01.pkl
+  weight: 150.0
+  description: general movement
+- file: mydata3/80_seg02.pkl
+  weight: 150.0
+  description: general movement
 - file: mocap/0.pkl
   weight: 100.0
   description: general movement

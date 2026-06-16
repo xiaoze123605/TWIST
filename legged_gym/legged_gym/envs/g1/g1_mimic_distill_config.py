@@ -474,7 +474,7 @@ class G1MimicStuRLCfgDAgger(G1MimicStuRLCfg):
         warm_iters = 100
         
         # logging
-        save_interval = 500
+        save_interval = 100
         experiment_name = 'test'
         run_name = ''
         resume = False
@@ -508,3 +508,15 @@ class G1MimicStuRLCfgDAgger(G1MimicStuRLCfg):
         activation = 'silu'
         layer_norm = True
         motion_latent_dim = 128
+
+
+class G1MimicStuCleanedCfg(G1MimicStuRLCfg):
+    class motion(G1MimicStuRLCfg.motion):
+        motion_file = f"{LEGGED_GYM_ROOT_DIR}/motion_data_configs/twist_dataset_cleaned.yaml"
+
+
+class G1MimicStuCleanedCfgDAgger(G1MimicStuRLCfgDAgger):
+    class env(G1MimicStuCleanedCfg.env):
+        pass
+    class motion(G1MimicStuCleanedCfg.motion):
+        pass

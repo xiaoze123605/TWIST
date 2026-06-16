@@ -86,6 +86,7 @@ And we have also provided full motion datasets to ensure you can successfully tr
 **1**. Training teacher policy via RL:
 ```bash
 bash train_teacher.sh 0927_twist_teacher cuda:0
+
 ```
 - arg 1: teacher policy expid
 - arg 2: cuda device id

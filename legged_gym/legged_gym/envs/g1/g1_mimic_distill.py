@@ -1,3 +1,4 @@
+from isaacgym import gymtorch
 from isaacgym.torch_utils import *
 
 import torch
@@ -7,7 +8,7 @@ from .g1_mimic_distill_config import G1MimicPrivCfg, G1MimicStuCfg
 from legged_gym.gym_utils.math import *
 from pose.utils import torch_utils
 from legged_gym.envs.base.legged_robot import euler_from_quaternion
-from legged_gym.envs.base.humanoid_char import convert_to_local_root_body_pos, convert_to_global_root_body_pos
+from legged_gym.envs.base.humanoid_char import convert_to_local_root_body_pos, convert_to_global_root_body_pos, compute_local_body_pos
 
 def g1_body_from_38_to_52(body_pos_38: torch.Tensor) -> torch.Tensor:
     """
@@ -361,3 +362,86 @@ class G1MimicDistill(HumanoidMimic):
     
     def _reward_ankle_action(self):
         return torch.norm(self.action_history_buf[:, -1, [4, 5, 10, 11]], dim=1)
+
+
+class G1MimicRecorder(G1MimicDistill):
+    """Environment subclass that records physically-consistent trajectories from teacher rollouts."""
+    def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
+        super().__init__(cfg, sim_params, physics_engine, sim_device, headless)
+        self._rec_frames = []
+
+    def _init_recording(self):
+        self._rec_frames = []
+
+    def _record_current_state(self):
+        body_pos_global = self.rigid_body_states[:, 1:, :3]  # skip world (index 0)
+        local_body_pos = compute_local_body_pos(
+            self.root_states[:, :3],
+            self.root_states[:, 3:7],
+            body_pos_global,
+        )
+        self._rec_frames.append({
+            'root_pos': self.root_states[:, :3].clone(),
+            'root_rot': self.root_states[:, 3:7].clone(),
+            'dof_pos': self.dof_pos.clone(),
+            'local_body_pos': local_body_pos.clone(),
+        })
+
+    def _post_physics_step_callback(self):
+        super()._post_physics_step_callback()
+        self._record_current_state()
+
+    def check_termination(self):
+        """Relaxed termination: only catastrophic failures (fall, roll/pitch), no pose tracking."""
+        self.reset_buf[:] = 0
+        self.reset_buf = torch.where(
+            self.contact_forces[:, self.termination_contact_indices, :].max(dim=-1).values.max(dim=-1).values > 1.,
+            torch.ones_like(self.reset_buf), self.reset_buf,
+        )
+        self.reset_buf = torch.where(
+            self.root_states[:, 2] < self.cfg.rewards.root_height_diff_threshold,
+            torch.ones_like(self.reset_buf), self.reset_buf,
+        )
+        self.reset_buf = torch.where(
+            torch.abs(self.roll) > 1.2,
+            torch.ones_like(self.reset_buf), self.reset_buf,
+        )
+        self.reset_buf = torch.where(
+            torch.abs(self.pitch) > 1.2,
+            torch.ones_like(self.reset_buf), self.reset_buf,
+        )
+        vel_too_large = torch.norm(self.root_states[:, 7:10], dim=-1) > 5.
+        self.reset_buf |= vel_too_large
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length
+        self.reset_buf |= self.time_out_buf
+
+    def reset_to_motion(self, motion_id):
+        """Reset env to a specific motion at time 0 and begin recording."""
+        env_ids = torch.tensor([0], device=self.device)
+        motion_ids = torch.tensor([motion_id], device=self.device)
+        self._reset_ref_motion(env_ids=env_ids, motion_ids=motion_ids)
+        vel_factor = 0.8
+        self._reset_dofs(env_ids, self._ref_dof_pos, self._ref_dof_vel * vel_factor)
+        self._reset_root_states(env_ids=env_ids, root_vel=self._ref_root_vel * vel_factor,
+                                root_quat=self._ref_root_rot)
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(
+            torch.zeros(self.num_envs, self.num_dof, device=self.device)))
+        self.gym.simulate(self.sim)
+        self.gym.fetch_results(self.sim, True)
+        self.gym.refresh_actor_root_state_tensor(self.sim)
+        self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_dof_state_tensor(self.sim)
+        self.gym.refresh_force_sensor_tensor(self.sim)
+        # Compute derived quantities needed by compute_observations
+        self.base_quat[:] = self.root_states[:, 3:7]
+        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(self.base_quat)
+        self.last_actions[env_ids] = 0.
+        self.episode_length_buf[env_ids] = 0
+        self.reset_buf[env_ids] = 0
+        self.compute_observations()  # must recompute obs after state change
+        self._init_recording()
+        self._record_current_state()

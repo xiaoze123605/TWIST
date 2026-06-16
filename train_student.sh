@@ -25,6 +25,7 @@ python train.py --task "${task_name}" \
                 --exptid "${exptid}" \
                 --teacher_exptid "${teacher_exptid}" \
                 --device "${device}" \
-                # --resume \
+                --resume \
+                --resumeid "${exptid}" \
+                --teacher_checkpoint 22500
                 # --debug
-                # --resumeid xxx

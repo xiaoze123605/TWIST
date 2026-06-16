@@ -40,6 +40,9 @@ import wandb
 # import ml_runlog
 import datetime
 
+import builtins
+
+
 import numpy as np
 from rsl_rl.algorithms import PPORMA, PPO
 from rsl_rl.modules import *
@@ -50,6 +53,7 @@ from copy import copy, deepcopy
 import warnings
 # from rsl_rl.utils.running_mean_std import RunningMeanStd
 from rsl_rl.utils.normalizer import Normalizer
+
 
 class OnPolicyRunnerMimic:
 
@@ -360,7 +364,7 @@ class OnPolicyRunnerMimic:
                        f"""{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"""
                        f"""{'Total time:':>{pad}} {self.tot_time:.2f}s\n"""
                        f"""{'ETA:':>{pad}} {mins:.0f} mins {secs:.1f} s\n""")
-        print(log_string)
+        builtins.print(log_string)
 
     def save(self, path, infos=None):
         if self.normalize_obs:

@@ -5,6 +5,17 @@ import torch
 
 from pose.utils.torch_utils import quat_diff, quat_to_exp_map, slerp
 from tqdm import tqdm
+#为了兼容pickle文件中numpy的模块路径，添加了以下代码
+import sys
+import pickle
+import numpy as np
+
+# numpy pickle compatibility patch
+sys.modules['numpy._core'] = np.core
+sys.modules['numpy._core.multiarray'] = np.core.multiarray
+sys.modules['numpy._core.numeric'] = np.core.numeric
+#到此为止
+
 logger = logging.getLogger(__name__)
 
 def smooth(x, box_pts, device):

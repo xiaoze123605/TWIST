@@ -32,7 +32,9 @@ import time
 import os
 from collections import deque
 import statistics
-from rich import print
+#注释rich改为普通print
+#from rich import print
+import builtins
 
 # from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -400,7 +402,7 @@ class OnPolicyDaggerRunner:
                        f"""{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"""
                        f"""{'Total time:':>{pad}} {self.tot_time:.2f}s\n"""
                        f"""{'ETA:':>{pad}} {mins:.0f} mins {secs:.1f} s\n""")
-        print(log_string)
+        builtins.print(log_string)
 
     def save(self, path, infos=None):
         if self.normalize_obs:
