@@ -146,24 +146,25 @@ More specifically, the pipeline for sim2real deploy is:
 3. now you should be able to ping the robot via `ping 192.168.123.164`.
 4. then use Unitree G1's remote control to enter dev mode, i.e., press the `L2+R2` key combination.
 5. now you should be able to see the robot joints in the damping state.
-6. then you can run the low-level controller by:
+6. then run the supported safety-focused low-level controller (see
+   [`deploy_real/README.md`](deploy_real/README.md) for stand-test, replay,
+   dry-run, recovery-test, logging, and OptiTrack procedures):
 ```bash
 cd deploy_real
-python server_low_level_g1_real.py --policy_path PATH/TO/YOUR/JIT/MODEL --net YOUR_NET_INTERFACE_TO_UNITREE_ROBOT
+python server_low_level_g1_real_v2.py --policy_path PATH/TO/YOUR/JIT/MODEL --net YOUR_NET_INTERFACE_TO_UNITREE_ROBOT
 ```
 
-
-
-
-
-Similarly, you run the low-level controller first and then control the robot via high-level motion server.
+Run the low-level controller first and then control the robot via the high-level
+motion server. Visualization is off by default; add `--vis` explicitly if needed.
 ```bash
-python server_high_level_motion_lib.py --motion_file PATH/TO/YOUR/MOTION/FILE --vis
+python server_high_level_motion_lib.py --motion_file PATH/TO/YOUR/MOTION/FILE
 ```
 
-**6**. Real-time teleop. We provide a legacy version we use in May 2025 here: `deploy_real/server_motion_optitrack_v2 (legacy).py`. 
-- As later we have upgraded to use [GMR](https://github.com/YanjieZe/GMR) for real-time teleop, you can first check [GMR](https://github.com/YanjieZe/GMR) for real-time motion retargeting. After you can successfully run GMR with your MoCap, it would be very easy to modify our provided script to your setting.
-- The teleop script could be further improved. We are preparing to release the new version soon, and this old teleop script will be only used for your reference.
+**6**. Real-time teleop. Use
+`deploy_real/server_motion_optitrack_gmr_clean_bufferfix_v2.py` with
+`deploy_real/server_low_level_g1_real_v2.py`. The file
+`deploy_real/server_motion_optitrack_v2 (legacy).py` is deprecated and retained
+only for reference. Full commands are in [`deploy_real/README.md`](deploy_real/README.md).
 
 # Q & A
 
@@ -173,4 +174,3 @@ A: see [issue#10](https://github.com/YanjieZe/TWIST/issues/10).
    
 # Contact
 If you have any questions, please contact me at `yanjieze@stanford.edu`.
-

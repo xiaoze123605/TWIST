@@ -5,7 +5,7 @@ import yaml
 class Config:
     def __init__(self, file_path) -> None:
         with open(file_path, "r") as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
+            config = yaml.safe_load(f.read())
             self.control_dt = config["control_dt"]
 
             self.msg_type = config["msg_type"]

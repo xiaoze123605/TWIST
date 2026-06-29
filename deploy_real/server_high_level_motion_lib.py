@@ -129,50 +129,64 @@ def main(args, xml_file, robot_base):
         root_ang_vel_list = []
         
     try:
-        for t_step in range(num_steps):
-            t0 = time.time()
+        loop_idx = 0
+        global_frame_id = 0
+        while True:
+            if args.loop:
+                print(f"[Motion Server] Loop {loop_idx}...")
+            for t_step in range(num_steps):
+                t0 = time.time()
 
-            # Build a mimic obs from the motion library
-            mimic_obs, root_pos, root_rot, dof_pos, root_vel, root_ang_vel = build_mimic_obs(
-                motion_lib=motion_lib,
-                t_step=t_step,
-                control_dt=control_dt,
-                tar_obs_steps=tar_obs_steps_tensor,
-                robot_type=args.robot
-            )
-            if vis_root_vel:
-                root_vel_list.append(root_vel)
-            if vis_root_ang_vel:
-                root_ang_vel_list.append(root_ang_vel)
+                # Build a mimic obs from the motion library
+                mimic_obs, root_pos, root_rot, dof_pos, root_vel, root_ang_vel = build_mimic_obs(
+                    motion_lib=motion_lib,
+                    t_step=t_step,
+                    control_dt=control_dt,
+                    tar_obs_steps=tar_obs_steps_tensor,
+                    robot_type=args.robot
+                )
+                if vis_root_vel:
+                    root_vel_list.append(root_vel)
+                if vis_root_ang_vel:
+                    root_ang_vel_list.append(root_ang_vel)
 
-            # Convert to JSON (list) to put into Redis
-            mimic_obs_list = mimic_obs.tolist() if mimic_obs.ndim == 1 else mimic_obs.flatten().tolist()
-            msg = {"timestamp": time.time(), "frame_id": t_step,
-                   "action_mimic": mimic_obs_list}
-            redis_client.set(f"action_mimic_{args.robot}", json.dumps(msg))
-            redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
-            last_mimic_obs = mimic_obs
-            # Print or log it
-            print(f"Step {t_step:4d} => mimic_obs shape = {mimic_obs.shape} published...", end="\r")
+                # Convert to JSON (list) to put into Redis
+                mimic_obs_list = mimic_obs.tolist() if mimic_obs.ndim == 1 else mimic_obs.flatten().tolist()
+                redis_client.set(f"action_mimic_{args.robot}", json.dumps(mimic_obs_list))
+                redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
+                last_mimic_obs = mimic_obs
+                # Print or log it
+                print(
+                    f"Loop {loop_idx:3d} step {t_step:4d}/{num_steps} "
+                    f"=> mimic_obs shape = {mimic_obs.shape} published...",
+                    end="\r",
+                )
+                global_frame_id += 1
 
-            if args.vis:
-                sim_data.qpos[:3] = root_pos
-                # filp rot
-                # root_rot = root_rot[[1,2,3,0]]
-                root_rot = root_rot[[3,0,1,2]]
-                sim_data.qpos[3:7] = root_rot
-                sim_data.qpos[7:] = dof_pos
-                mujoco.mj_forward(sim_model, sim_data)
-                robot_base_pos = sim_data.xpos[sim_model.body(robot_base).id]
-                viewer.cam.lookat = robot_base_pos
-                # set distance to pelvis
-                viewer.cam.distance = 2.0
-                viewer.sync()
-                
-            # Sleep to maintain real-time pace
-            elapsed = time.time() - t0
-            if elapsed < control_dt:
-                time.sleep(control_dt - elapsed)
+                if args.vis:
+                    sim_data.qpos[:3] = root_pos
+                    # filp rot
+                    # root_rot = root_rot[[1,2,3,0]]
+                    root_rot = root_rot[[3,0,1,2]]
+                    sim_data.qpos[3:7] = root_rot
+                    sim_data.qpos[7:] = dof_pos
+                    mujoco.mj_forward(sim_model, sim_data)
+                    robot_base_pos = sim_data.xpos[sim_model.body(robot_base).id]
+                    viewer.cam.lookat = robot_base_pos
+                    # set distance to pelvis
+                    viewer.cam.distance = 2.0
+                    viewer.sync()
+                    
+                # Sleep to maintain real-time pace
+                elapsed = time.time() - t0
+                if elapsed < control_dt:
+                    time.sleep(control_dt - elapsed)
+
+            if not args.loop:
+                break
+            loop_idx += 1
+            if args.loop_pause > 0.0:
+                time.sleep(args.loop_pause)
         
     except KeyboardInterrupt:
         print("[Motion Server] Keyboard interrupt. Interpolating to default mimic_obs...")
@@ -180,14 +194,10 @@ def main(args, xml_file, robot_base):
         time_back_to_default = 2.0
         for i in range(int(time_back_to_default / control_dt)):
             interp_mimic_obs = last_mimic_obs + (DEFAULT_MIMIC_OBS[args.robot] - last_mimic_obs) * (i / (time_back_to_default / control_dt))
-            msg = {"timestamp": time.time(), "frame_id": -1,
-                   "action_mimic": interp_mimic_obs.tolist()}
-            redis_client.set(f"action_mimic_{args.robot}", json.dumps(msg))
+            redis_client.set(f"action_mimic_{args.robot}", json.dumps(interp_mimic_obs.tolist()))
             redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
             time.sleep(control_dt)
-        msg = {"timestamp": time.time(), "frame_id": -1,
-               "action_mimic": DEFAULT_MIMIC_OBS[args.robot].tolist()}
-        redis_client.set(f"action_mimic_{args.robot}", json.dumps(msg))
+        redis_client.set(f"action_mimic_{args.robot}", json.dumps(DEFAULT_MIMIC_OBS[args.robot].tolist()))
         redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
         last_mimic_obs = DEFAULT_MIMIC_OBS[args.robot]
         exit()
@@ -197,14 +207,10 @@ def main(args, xml_file, robot_base):
         time_back_to_default = 2.0
         for i in range(int(time_back_to_default / control_dt)):
             interp_mimic_obs = last_mimic_obs + (DEFAULT_MIMIC_OBS[args.robot] - last_mimic_obs) * (i / (time_back_to_default / control_dt))
-            msg = {"timestamp": time.time(), "frame_id": -1,
-                   "action_mimic": interp_mimic_obs.tolist()}
-            redis_client.set(f"action_mimic_{args.robot}", json.dumps(msg))
+            redis_client.set(f"action_mimic_{args.robot}", json.dumps(interp_mimic_obs.tolist()))
             redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
             time.sleep(control_dt)
-        msg = {"timestamp": time.time(), "frame_id": -1,
-               "action_mimic": DEFAULT_MIMIC_OBS[args.robot].tolist()}
-        redis_client.set(f"action_mimic_{args.robot}", json.dumps(msg))
+        redis_client.set(f"action_mimic_{args.robot}", json.dumps(DEFAULT_MIMIC_OBS[args.robot].tolist()))
         redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
         last_mimic_obs = DEFAULT_MIMIC_OBS[args.robot]
         exit()
@@ -218,11 +224,13 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=str,
                         default="1",
                         help="Comma-separated steps for future frames (tar_obs_steps)")
+    parser.add_argument("--loop", action="store_true",
+                        help="Loop the motion continuously until Ctrl+C.")
+    parser.add_argument("--loop-pause", type=float, default=0.0,
+                        help="Seconds to wait between loops when --loop is set.")
     parser.add_argument("--vis", action="store_true", help="Visualize the motion")
     args = parser.parse_args()
 
-    args.vis = True
-    
     print("Robot type: ", args.robot)
     print("Motion file: ", args.motion_file)
     print("Steps: ", args.steps)
