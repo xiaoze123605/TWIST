@@ -26,15 +26,16 @@ def build_mimic_obs(
     t_step: int,
     control_dt: float,
     tar_obs_steps,
-    robot_type: str = "g1"
+    robot_type: str = "g1",
+    motion_speed: float = 1.0,
 ):
     """
     Build the mimic_obs at time-step t_step, referencing the code in MimicRunner.
     """
     device = torch.device("cuda")
     # Build times
-    motion_times = torch.tensor([t_step * control_dt], device=device).unsqueeze(-1)
-    obs_motion_times = tar_obs_steps * control_dt + motion_times
+    motion_times = torch.tensor([t_step * control_dt * motion_speed], device=device).unsqueeze(-1)
+    obs_motion_times = tar_obs_steps * control_dt * motion_speed + motion_times
     obs_motion_times = obs_motion_times.flatten()
     
     # Suppose we only have a single motion in the .pkl
@@ -52,6 +53,8 @@ def build_mimic_obs(
     # Transform velocities to root frame
     root_vel = quat_rotate_inverse_torch(root_rot, root_vel).reshape(1, -1, 3)
     root_ang_vel = quat_rotate_inverse_torch(root_rot, root_ang_vel).reshape(1, -1, 3)
+    root_vel = root_vel * motion_speed
+    root_ang_vel = root_ang_vel * motion_speed
 
     root_pos = root_pos.reshape(1, -1, 3)
     dof_pos = dof_pos.reshape(1, -1, dof_pos.shape[-1])
@@ -78,6 +81,10 @@ def build_mimic_obs(
 
 
 def main(args, xml_file, robot_base):
+    if args.motion_speed <= 0.0:
+        raise ValueError("--motion-speed must be > 0")
+    if not (0.0 <= args.motion_scale <= 1.0):
+        raise ValueError("--motion-scale must be in [0, 1]")
 
     if args.vis:
         sim_model = mujoco.MjModel.from_xml_path(xml_file)
@@ -116,9 +123,12 @@ def main(args, xml_file, robot_base):
     # compute num_steps based on motion length
     motion_id = torch.tensor([0], device=device, dtype=torch.long)
     motion_length = motion_lib.get_motion_length(motion_id)
-    num_steps = int(motion_length / control_dt)
+    num_steps = int(motion_length / (control_dt * args.motion_speed))
     
-    print(f"[Motion Server] Streaming for {num_steps} steps at dt={control_dt:.3f} seconds...")
+    print(
+        f"[Motion Server] Streaming for {num_steps} steps at dt={control_dt:.3f} seconds, "
+        f"motion_speed={args.motion_speed:.3f}, motion_scale={args.motion_scale:.3f}..."
+    )
 
     last_mimic_obs = DEFAULT_MIMIC_OBS[args.robot]
     vis_root_vel = False
@@ -143,7 +153,11 @@ def main(args, xml_file, robot_base):
                     t_step=t_step,
                     control_dt=control_dt,
                     tar_obs_steps=tar_obs_steps_tensor,
-                    robot_type=args.robot
+                    robot_type=args.robot,
+                    motion_speed=args.motion_speed,
+                )
+                mimic_obs = DEFAULT_MIMIC_OBS[args.robot] + args.motion_scale * (
+                    mimic_obs - DEFAULT_MIMIC_OBS[args.robot]
                 )
                 if vis_root_vel:
                     root_vel_list.append(root_vel)
@@ -228,12 +242,18 @@ if __name__ == "__main__":
                         help="Loop the motion continuously until Ctrl+C.")
     parser.add_argument("--loop-pause", type=float, default=0.0,
                         help="Seconds to wait between loops when --loop is set.")
+    parser.add_argument("--motion-speed", type=float, default=1.0,
+                        help="Motion playback speed. Use 0.5 for half-speed real deployment.")
+    parser.add_argument("--motion-scale", type=float, default=1.0,
+                        help="Scale mimic obs around default pose. Use 0.6 to reduce motion amplitude.")
     parser.add_argument("--vis", action="store_true", help="Visualize the motion")
     args = parser.parse_args()
 
     print("Robot type: ", args.robot)
     print("Motion file: ", args.motion_file)
     print("Steps: ", args.steps)
+    print("Motion speed: ", args.motion_speed)
+    print("Motion scale: ", args.motion_scale)
     
     HERE = os.path.dirname(os.path.abspath(__file__))
     

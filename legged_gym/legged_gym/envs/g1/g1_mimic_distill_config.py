@@ -243,34 +243,42 @@ class G1MimicPrivCfg(HumanoidMimicCfg):
 
     class domain_rand:
         domain_rand_general = True # manually set this, setting from parser does not work;
-        
+
         randomize_gravity = (True and domain_rand_general)
-        gravity_rand_interval_s = 4
-        gravity_range = (-0.1, 0.1)
-        
+        gravity_rand_interval_s = 3
+        gravity_range = (-0.15, 0.15)
+
         randomize_friction = (True and domain_rand_general)
-        friction_range = [0.1, 2.]
-        
+        friction_range = [0.05, 2.5]
+
         randomize_base_mass = (True and domain_rand_general)
-        added_mass_range = [-3., 3]
-        
+        added_mass_range = [-5.0, 5.0]
+
         randomize_base_com = (True and domain_rand_general)
-        added_com_range = [-0.05, 0.05]
-        
+        added_com_range = [-0.08, 0.08]
+
         push_robots = (True and domain_rand_general)
-        push_interval_s = 4
-        max_push_vel_xy = 1.0
-        
+        push_interval_s = 3
+        max_push_vel_xy = 1.2
+
         push_end_effector = (True and domain_rand_general)
         # push_end_effector = False
         push_end_effector_interval_s = 2
-        max_push_force_end_effector = 20.0
+        max_push_force_end_effector = 30.0
 
         randomize_motor = (True and domain_rand_general)
-        motor_strength_range = [0.8, 1.2]
+        motor_strength_range = [0.7, 1.3]
 
         action_delay = (True and domain_rand_general)
         action_buf_len = 8
+
+        # Added for robust student sim2real training.
+        randomize_mimic_obs = True
+        mimic_obs_noise_std = 0.02
+        mimic_obs_dropout_prob = 0.03
+        mimic_obs_delay_max = 3
+        mimic_obs_lpf_prob = 0.5
+        mimic_obs_lpf_alpha_range = [0.6, 0.9]
     
     class noise(HumanoidMimicCfg.noise):
         add_noise = True

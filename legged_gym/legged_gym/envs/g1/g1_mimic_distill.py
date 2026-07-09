@@ -188,6 +188,19 @@ class G1MimicDistill(HumanoidMimic):
         super()._init_buffers()
         self.obs_history_buf = torch.zeros((self.num_envs, self.cfg.env.history_len, self.cfg.env.n_obs_single), device=self.device)
         self.privileged_obs_history_buf = torch.zeros((self.num_envs, self.cfg.env.history_len, self.cfg.env.n_priv_obs_single), device=self.device)
+
+        delay_max = int(getattr(self.cfg.domain_rand, "mimic_obs_delay_max", 0))
+        delay_buf_len = max(1, delay_max + 1)
+
+        self.mimic_obs_delay_buf = torch.zeros(
+            (self.num_envs, delay_buf_len, self.cfg.env.n_mimic_obs),
+            device=self.device,
+        )
+
+        self.mimic_obs_lpf_buf = torch.zeros(
+            (self.num_envs, self.cfg.env.n_mimic_obs),
+            device=self.device,
+        )
     
     def _get_noise_scale_vec(self, cfg):
         noise_scale_vec = torch.zeros(1, self.cfg.env.n_proprio, device=self.device)
@@ -255,11 +268,106 @@ class G1MimicDistill(HumanoidMimic):
         
         return priv_mimic_obs_buf.reshape(self.num_envs, -1), mimic_obs_buf.reshape(self.num_envs, -1)
 
+    def _randomize_mimic_obs(self, mimic_obs):
+        """Randomize student mimic input for sim2real robustness.
+
+        This simulates real deployment issues:
+        - mocap / retargeting noise
+        - Redis frame hold or packet loss
+        - high-level input delay
+        - deployment-side low-pass filtering
+
+        Only affects student observations.
+        Does not change observation dimension.
+        """
+        if not getattr(self.cfg.domain_rand, "randomize_mimic_obs", False):
+            return mimic_obs
+
+        if getattr(self, "obs_type", None) != "student":
+            return mimic_obs
+
+        out = mimic_obs
+
+        # 1. Add small noise to mimic input.
+        noise_std = float(getattr(self.cfg.domain_rand, "mimic_obs_noise_std", 0.0))
+        if noise_std > 0.0:
+            out = out + noise_std * torch.randn_like(out)
+
+        # Make sure buffers exist. This is defensive, in case parent init order changes.
+        if not hasattr(self, "mimic_obs_delay_buf"):
+            delay_max = int(getattr(self.cfg.domain_rand, "mimic_obs_delay_max", 0))
+            delay_buf_len = max(1, delay_max + 1)
+            self.mimic_obs_delay_buf = torch.zeros(
+                (self.num_envs, delay_buf_len, self.cfg.env.n_mimic_obs),
+                device=self.device,
+            )
+
+        if not hasattr(self, "mimic_obs_lpf_buf"):
+            self.mimic_obs_lpf_buf = torch.zeros(
+                (self.num_envs, self.cfg.env.n_mimic_obs),
+                device=self.device,
+            )
+
+        # 2. Random frame hold / dropout.
+        dropout_prob = float(getattr(self.cfg.domain_rand, "mimic_obs_dropout_prob", 0.0))
+        if dropout_prob > 0.0:
+            keep_old = torch.rand(self.num_envs, 1, device=self.device) < dropout_prob
+            out = torch.where(keep_old, self.mimic_obs_delay_buf[:, -1], out)
+
+        # 3. Update delay buffer and randomly use delayed mimic obs.
+        delay_max = int(getattr(self.cfg.domain_rand, "mimic_obs_delay_max", 0))
+        if delay_max > 0 and self.mimic_obs_delay_buf.shape[1] > 1:
+            delay_max = min(delay_max, self.mimic_obs_delay_buf.shape[1] - 1)
+
+            self.mimic_obs_delay_buf = torch.cat(
+                [self.mimic_obs_delay_buf[:, 1:], out.unsqueeze(1)],
+                dim=1,
+            )
+
+            delay_ids = torch.randint(
+                low=0,
+                high=delay_max + 1,
+                size=(self.num_envs,),
+                device=self.device,
+            )
+
+            gather_ids = self.mimic_obs_delay_buf.shape[1] - 1 - delay_ids
+
+            out = self.mimic_obs_delay_buf[
+                torch.arange(self.num_envs, device=self.device),
+                gather_ids,
+            ]
+        else:
+            self.mimic_obs_delay_buf[:, -1] = out
+
+        # 4. Random low-pass filtering.
+        lpf_prob = float(getattr(self.cfg.domain_rand, "mimic_obs_lpf_prob", 0.0))
+        if lpf_prob > 0.0:
+            alpha_range = getattr(
+                self.cfg.domain_rand,
+                "mimic_obs_lpf_alpha_range",
+                [0.6, 0.9],
+            )
+
+            alpha = torch.empty(self.num_envs, 1, device=self.device).uniform_(
+                float(alpha_range[0]),
+                float(alpha_range[1]),
+            )
+
+            filtered = alpha * self.mimic_obs_lpf_buf + (1.0 - alpha) * out
+            use_lpf = torch.rand(self.num_envs, 1, device=self.device) < lpf_prob
+            out = torch.where(use_lpf, filtered, out)
+
+            self.mimic_obs_lpf_buf = out.detach()
+
+        return out
+
     def compute_observations(self):
         imu_obs = torch.stack((self.roll, self.pitch), dim=1)
         self.base_yaw_quat = quat_from_euler_xyz(0*self.yaw, 0*self.yaw, self.yaw)
         priv_mimic_obs, mimic_obs = self._get_mimic_obs()
-        
+        mimic_obs = self._randomize_mimic_obs(mimic_obs)
+
         proprio_obs_buf = torch.cat((
                             self.base_ang_vel  * self.obs_scales.ang_vel,   # 3 dims
                             imu_obs,    # 2 dims

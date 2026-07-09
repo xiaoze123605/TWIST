@@ -95,7 +95,6 @@ while [ $RESTART_COUNT -lt $MAX_RESTARTS ]; do
         --proj_name "$PROJ" \
         --exptid "$EXPTID" \
         --device "$DEVICE" \
-        --no_wandb \
         $TEACHER_ARGS \
         $RESUME_FLAGS
     EXIT_CODE=$?
