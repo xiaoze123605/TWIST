@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -42,7 +42,7 @@ import wandb
 import datetime
 
 import numpy as np
-from rsl_rl.algorithms import PPORMA, PPO
+from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter
 from rsl_rl.modules import *
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.env import VecEnv
@@ -85,9 +85,9 @@ class OnPolicyRunner:
                                         **self.policy_cfg).to(self.device)
 
         print("Number of parameters: ", sum(p.numel() for p in actor_critic.parameters()))
-        
+
         share_normalizer = (self.env.num_obs == self.env.num_privileged_obs) or self.env.num_privileged_obs is None
-            
+
         if self.normalize_obs:
             if share_normalizer:
                 self.normalizer = Normalizer(shape=self.env.num_obs, device=self.device, dtype=env.obs_buf.dtype)
@@ -98,9 +98,9 @@ class OnPolicyRunner:
         else:
             self.normalizer = None
             self.critic_normalizer = None
-        
+
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        self.alg = alg_class(self.env, 
+        self.alg = alg_class(self.env,
                                   actor_critic,
                                   device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
@@ -117,22 +117,22 @@ class OnPolicyRunner:
             )
         else:
             self.alg.init_storage(
-                self.env.num_envs, 
-                self.num_steps_per_env, 
-                [self.env.num_obs], 
-                [self.env.num_privileged_obs], 
+                self.env.num_envs,
+                self.num_steps_per_env,
+                [self.env.num_obs],
+                [self.env.num_privileged_obs],
                 [self.env.num_actions],
             )
 
         self.learn = self.learn_RL
-            
+
         # Log
         self.log_dir = log_dir
         self.writer = None
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
-        
+
 
     def learn_RL(self, num_learning_iterations, init_at_random_ep_len=False):
         mean_value_loss = 0.
@@ -140,7 +140,7 @@ class OnPolicyRunner:
         mean_disc_loss = 0.
         mean_disc_acc = 0.
         mean_hist_latent_loss = 0.
-        mean_priv_reg_loss = 0. 
+        mean_priv_reg_loss = 0.
         priv_reg_coef = 0.
         entropy_coef = 0.
         grad_penalty_coef = 0.
@@ -183,7 +183,7 @@ class OnPolicyRunner:
                     obs, privileged_obs, rewards, dones, infos = self.env.step(actions)  # obs has changed to next_obs !! if done obs has been reset
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
-                    
+
                     if self.normalize_obs:
                         before_norm_obs = obs.clone()
                         before_norm_critic_obs = critic_obs.clone()
@@ -193,9 +193,12 @@ class OnPolicyRunner:
                             self.normalizer.record(before_norm_obs)
                             if self.critic_normalizer is not None:
                                 self.critic_normalizer.record(before_norm_critic_obs)
-                    
+
+                    if getattr(self.alg, "requires_next_observations", False):
+                        infos["next_observations"] = obs.detach().clone()
+
                     total_rew = self.alg.process_env_step(rewards, dones, infos)
-                    
+
                     if self.log_dir is not None:
                         # Book keeping
                         if 'episode' in infos:
@@ -207,12 +210,12 @@ class OnPolicyRunner:
                         cur_episode_length += 1
 
                         new_ids = (dones > 0).nonzero(as_tuple=False)
-                        
+
                         rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         rew_explr_buffer.extend(cur_reward_explr_sum[new_ids][:, 0].cpu().numpy().tolist())
                         rew_entropy_buffer.extend(cur_reward_entropy_sum[new_ids][:, 0].cpu().numpy().tolist())
                         lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
-                        
+
                         cur_reward_sum[new_ids] = 0
                         cur_reward_explr_sum[new_ids] = 0
                         cur_reward_entropy_sum[new_ids] = 0
@@ -228,7 +231,7 @@ class OnPolicyRunner:
                 # Learning step
                 start = stop
                 self.alg.compute_returns(critic_obs)
-            
+
             regularization_scale = self.env.cfg.rewards.regularization_scale if hasattr(self.env.cfg.rewards, "regularization_scale") else 1
             average_episode_length = torch.mean(self.env.episode_length.float()).item() if hasattr(self.env, "episode_length") else 0
             mean_motion_difficulty = self.env.mean_motion_difficulty if hasattr(self.env, "mean_motion_difficulty") else 0
@@ -236,7 +239,7 @@ class OnPolicyRunner:
             if hist_encoding and not self.cfg["algorithm_class_name"] == "PPO":
                 print("Updating dagger...")
                 mean_hist_latent_loss = self.alg.update_dagger()
-            
+
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -251,10 +254,10 @@ class OnPolicyRunner:
                 if it % (5*self.save_interval) == 0:
                     self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
             ep_infos.clear()
-        
+
         # self.current_learning_iteration += num_learning_iterations
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
-    
+
     def _need_normalizer_update(self, iterations, update_iterations):
         return iterations < update_iterations
 
@@ -305,7 +308,7 @@ class OnPolicyRunner:
         if locs['grad_penalty_coef'] != 0:
             wandb_dict['Loss/grad_penalty_loss'] = locs['mean_grad_penalty_loss']
             wandb_dict['Scale/grad_penalty_coef'] = locs["grad_penalty_coef"]
-        
+
         if locs['mean_motion_difficulty'] != 0:
             wandb_dict['Scale/motion_difficulty'] = locs["mean_motion_difficulty"]
 
@@ -419,15 +422,14 @@ class OnPolicyRunner:
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic.act_inference
-    
+
     def get_actor_critic(self, device=None):
         self.alg.actor_critic.eval() # switch to evaluation mode (dropout for example)
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic
-    
+
     def get_normalizer(self, device=None):
         if device is not None:
             self.normalizer.to(device)
         return self.normalizer
-    

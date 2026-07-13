@@ -31,4 +31,5 @@
 from .actor_critic_rma import ActorCriticRMA
 from .actor_critic import ActorCritic
 from .actor_critic_mimic import ActorCriticMimic
+from .actor_critic_twist_anyadapter import TwistAnyAdapterActorCritic
 from .dagger_actor import DAggerActor

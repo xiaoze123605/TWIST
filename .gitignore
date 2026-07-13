@@ -53,3 +53,12 @@ deploy_real/server_motion_optitrack_gmr_v3.py
 deploy_real/server_motion_optitrack_gmr_v4.py
 deploy_real/server_motion_optitrack_gmr_arm_safe.py
 deploy_real/server_motion_optitrack_gmr_stable.py
+
+# Checkpoints and traced models (large files)
+*.pt
+*.pth
+legged_gym/logs/
+
+# External patches / notes
+_external_patches/
+patch_notes/

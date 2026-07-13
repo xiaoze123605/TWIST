@@ -30,5 +30,6 @@
 
 from .ppo_rma import PPORMA
 from .ppo import PPO
+from .ppo_anyadapter import PPOAnyAdapter
 from .dagger import DAgger
 from .dagger_ppo import DaggerPPO

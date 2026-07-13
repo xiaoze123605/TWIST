@@ -5,6 +5,7 @@ import torch
 
 from legged_gym.envs.base.humanoid_mimic import HumanoidMimic
 from .g1_mimic_distill_config import G1MimicPrivCfg, G1MimicStuCfg
+from legged_gym.envs.g1.anyadapter_history_mixin import AnyAdapterHistoryMixin
 from legged_gym.gym_utils.math import *
 from pose.utils import torch_utils
 from legged_gym.envs.base.legged_robot import euler_from_quaternion
@@ -94,7 +95,7 @@ def g1_body_from_38_to_52(body_pos_38: torch.Tensor) -> torch.Tensor:
 
 
 
-class G1MimicDistill(HumanoidMimic):
+class G1MimicDistill(AnyAdapterHistoryMixin, HumanoidMimic):
     def __init__(self, cfg: G1MimicPrivCfg, sim_params, physics_engine, sim_device, headless):
         self.cfg = cfg
         self.obs_type = cfg.env.obs_type
@@ -201,6 +202,11 @@ class G1MimicDistill(HumanoidMimic):
             (self.num_envs, self.cfg.env.n_mimic_obs),
             device=self.device,
         )
+        self._init_anyadapter_history()
+
+    def reset_idx(self, env_ids, motion_ids=None):
+        super().reset_idx(env_ids, motion_ids=motion_ids)
+        self._reset_anyadapter_history(env_ids)
     
     def _get_noise_scale_vec(self, cfg):
         noise_scale_vec = torch.zeros(1, self.cfg.env.n_proprio, device=self.device)
@@ -446,6 +452,7 @@ class G1MimicDistill(HumanoidMimic):
                         obs_buf.unsqueeze(1)
                     ], dim=1)
                 )
+        self.obs_buf = self._append_anyadapter_history(self.obs_buf, self.actions)
 
 
 ############################################################################################################

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -44,7 +44,7 @@ import builtins
 
 
 import numpy as np
-from rsl_rl.algorithms import PPORMA, PPO
+from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter
 from rsl_rl.modules import *
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.env import VecEnv
@@ -87,9 +87,9 @@ class OnPolicyRunnerMimic:
                                         num_motion_steps=len(self.env.cfg.env.tar_obs_steps),
                                         num_actions=self.env.num_actions,
                                         **self.policy_cfg).to(self.device)
-                
+
         share_normalizer = (self.env.num_obs == self.env.num_privileged_obs) or self.env.num_privileged_obs is None
-            
+
         if self.normalize_obs:
             if share_normalizer:
                 self.normalizer = Normalizer(shape=self.env.num_obs, device=self.device, dtype=env.obs_buf.dtype)
@@ -100,11 +100,12 @@ class OnPolicyRunnerMimic:
         else:
             self.normalizer = None
             self.critic_normalizer = None
-        
+
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        self.alg = alg_class(self.env, 
+        self.alg = alg_class(self.env,
                                   actor_critic,
                                   device=self.device, **self.alg_cfg)
+        self._print_anyadapter_init_debug(actor_critic)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
         self.dagger_update_freq = self.alg_cfg["dagger_update_freq"]
@@ -119,22 +120,70 @@ class OnPolicyRunnerMimic:
             )
         else:
             self.alg.init_storage(
-                self.env.num_envs, 
-                self.num_steps_per_env, 
-                [self.env.num_obs], 
-                [self.env.num_privileged_obs], 
+                self.env.num_envs,
+                self.num_steps_per_env,
+                [self.env.num_obs],
+                [self.env.num_privileged_obs],
                 [self.env.num_actions],
             )
 
         self.learn = self.learn_RL
-            
+
         # Log
         self.log_dir = log_dir
         self.writer = None
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
-        
+
+    def _print_anyadapter_init_debug(self, actor_critic):
+        is_anyadapter = (
+            "AnyAdapter" in self.cfg["policy_class_name"]
+            or "AnyAdapter" in self.cfg["algorithm_class_name"]
+            or "base_obs_dim" in self.policy_cfg
+        )
+        if not is_anyadapter:
+            return
+
+        base_obs_dim = self.policy_cfg.get("base_obs_dim", None)
+        history_len = self.policy_cfg.get("history_len", None)
+        hist_state_dim = self.policy_cfg.get("hist_state_dim", None)
+        history_frame_dim = self.policy_cfg.get("history_frame_dim", None)
+        action_delta_scale = self.policy_cfg.get("action_delta_scale", None)
+        freeze_base = self.policy_cfg.get("freeze_base", None)
+        init_noise_std = self.policy_cfg.get("init_noise_std", None)
+        adapter_reg_coef = self.alg_cfg.get("adapter_reg_coef", None)
+        world_model_loss_coef = self.alg_cfg.get("world_model_loss_coef", None)
+        weight_decay = self.alg_cfg.get("weight_decay", None)
+
+        expected_full_obs_dim = None
+        anyadapter_history_dim = None
+        if base_obs_dim is not None and history_len is not None and history_frame_dim is not None:
+            anyadapter_history_dim = int(history_len) * int(history_frame_dim)
+            expected_full_obs_dim = int(base_obs_dim) + anyadapter_history_dim
+
+        builtins.print("[AnyAdapter] ========================================")
+        builtins.print("[AnyAdapter] runner init")
+        builtins.print(f"[AnyAdapter] policy_class_name: {self.cfg['policy_class_name']}")
+        builtins.print(f"[AnyAdapter] algorithm_class_name: {self.cfg['algorithm_class_name']}")
+        builtins.print(f"[AnyAdapter] actor_critic class: {actor_critic.__class__.__name__}")
+        builtins.print(f"[AnyAdapter] alg class: {self.alg.__class__.__name__}")
+        builtins.print(f"[AnyAdapter] cfg.policy.base_obs_dim: {base_obs_dim}")
+        builtins.print(f"[AnyAdapter] cfg.policy.history_len: {history_len}")
+        builtins.print(f"[AnyAdapter] cfg.policy.hist_state_dim: {hist_state_dim}")
+        builtins.print(f"[AnyAdapter] cfg.policy.history_frame_dim: {history_frame_dim}")
+        builtins.print(f"[AnyAdapter] cfg.policy.action_delta_scale: {action_delta_scale}")
+        builtins.print(f"[AnyAdapter] cfg.policy.init_noise_std: {init_noise_std}")
+        builtins.print(f"[AnyAdapter] cfg.policy.freeze_base: {freeze_base}")
+        builtins.print(f"[AnyAdapter] cfg.algorithm.adapter_reg_coef: {adapter_reg_coef}")
+        builtins.print(f"[AnyAdapter] cfg.algorithm.world_model_loss_coef: {world_model_loss_coef}")
+        builtins.print(f"[AnyAdapter] cfg.algorithm.weight_decay: {weight_decay}")
+        builtins.print(f"[AnyAdapter] full obs dim: {self.env.num_obs}")
+        builtins.print(f"[AnyAdapter] base_obs dim: {base_obs_dim}")
+        builtins.print(f"[AnyAdapter] anyadapter history dim: {anyadapter_history_dim}")
+        builtins.print(f"[AnyAdapter] expected full obs dim: {expected_full_obs_dim}")
+        builtins.print("[AnyAdapter] ========================================")
+
 
     def learn_RL(self, num_learning_iterations, init_at_random_ep_len=False):
         mean_value_loss = 0.
@@ -142,7 +191,7 @@ class OnPolicyRunnerMimic:
         mean_disc_loss = 0.
         mean_disc_acc = 0.
         mean_hist_latent_loss = 0.
-        mean_priv_reg_loss = 0. 
+        mean_priv_reg_loss = 0.
         priv_reg_coef = 0.
         entropy_coef = 0.
         grad_penalty_coef = 0.
@@ -185,7 +234,7 @@ class OnPolicyRunnerMimic:
                     obs, privileged_obs, rewards, dones, infos = self.env.step(actions)  # obs has changed to next_obs !! if done obs has been reset
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
-                    
+
                     if self.normalize_obs:
                         before_norm_obs = obs.clone()
                         before_norm_critic_obs = critic_obs.clone()
@@ -195,9 +244,12 @@ class OnPolicyRunnerMimic:
                             self.normalizer.record(before_norm_obs)
                             if self.critic_normalizer is not None:
                                 self.critic_normalizer.record(before_norm_critic_obs)
-                    
+
+                    if getattr(self.alg, "requires_next_observations", False):
+                        infos["next_observations"] = obs.detach().clone()
+
                     total_rew = self.alg.process_env_step(rewards, dones, infos)
-                    
+
                     if self.log_dir is not None:
                         # Book keeping
                         if 'episode' in infos:
@@ -208,12 +260,12 @@ class OnPolicyRunnerMimic:
                         cur_episode_length += 1
 
                         new_ids = (dones > 0).nonzero(as_tuple=False)
-                        
+
                         rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         rew_explr_buffer.extend(cur_reward_explr_sum[new_ids][:, 0].cpu().numpy().tolist())
                         rew_entropy_buffer.extend(cur_reward_entropy_sum[new_ids][:, 0].cpu().numpy().tolist())
                         lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
-                        
+
                         cur_reward_sum[new_ids] = 0
                         cur_reward_explr_sum[new_ids] = 0
                         cur_reward_entropy_sum[new_ids] = 0
@@ -229,15 +281,15 @@ class OnPolicyRunnerMimic:
                 # Learning step
                 start = stop
                 self.alg.compute_returns(critic_obs)
-            
+
             regularization_scale = self.env.cfg.rewards.regularization_scale if hasattr(self.env.cfg.rewards, "regularization_scale") else 1
             average_episode_length = torch.mean(self.env.episode_length.float()).item() if hasattr(self.env, "episode_length") else 0
             mean_motion_difficulty = self.env.mean_motion_difficulty if hasattr(self.env, "mean_motion_difficulty") else 0
             mean_value_loss, mean_surrogate_loss, mean_priv_reg_loss, priv_reg_coef, mean_grad_penalty_loss, grad_penalty_coef = self.alg.update()
-            if hist_encoding and not self.cfg["algorithm_class_name"] == "PPO":
+            if hist_encoding and not self.cfg["algorithm_class_name"] == "PPO" and not getattr(self.alg, "skip_dagger_update", False):
                 print("Updating dagger...")
                 mean_hist_latent_loss = self.alg.update_dagger()
-            
+
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -252,10 +304,10 @@ class OnPolicyRunnerMimic:
                 if it % (5*self.save_interval) == 0:
                     self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
             ep_infos.clear()
-        
+
         # self.current_learning_iteration += num_learning_iterations
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
-    
+
     def _need_normalizer_update(self, iterations, update_iterations):
         return iterations < update_iterations
 
@@ -296,6 +348,24 @@ class OnPolicyRunnerMimic:
         wandb_dict['Loss/entropy_coef'] = locs['entropy_coef']
         wandb_dict['Loss/learning_rate'] = self.alg.learning_rate
 
+        anyadapter_metrics = getattr(self.alg, "anyadapter_metrics", None)
+        anyadapter_log_string = ""
+        if anyadapter_metrics:
+            wandb_dict['AnyAdapter/world_model_loss'] = anyadapter_metrics.get("world_model_loss", 0.0)
+            wandb_dict['AnyAdapter/world_model_loss_skipped'] = anyadapter_metrics.get("world_model_loss_skipped", 0.0)
+            wandb_dict['AnyAdapter/adapter_delta_l2'] = anyadapter_metrics.get("adapter_delta_l2", 0.0)
+            wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
+            wandb_dict['AnyAdapter/surrogate_loss'] = anyadapter_metrics.get("surrogate_loss", locs['mean_surrogate_loss'])
+            wandb_dict['AnyAdapter/value_loss'] = anyadapter_metrics.get("value_loss", locs['mean_value_loss'])
+            anyadapter_log_string = (
+                f"""{'AnyAdapter wm loss:':>{pad}} {anyadapter_metrics.get('world_model_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter wm skipped:':>{pad}} {anyadapter_metrics.get('world_model_loss_skipped', 0.0):.0f}\n"""
+                f"""{'AnyAdapter delta L2:':>{pad}} {anyadapter_metrics.get('adapter_delta_l2', 0.0):.6f}\n"""
+                f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter surrogate:':>{pad}} {anyadapter_metrics.get('surrogate_loss', locs['mean_surrogate_loss']):.6f}\n"""
+                f"""{'AnyAdapter value loss:':>{pad}} {anyadapter_metrics.get('value_loss', locs['mean_value_loss']):.6f}\n"""
+            )
+
         wandb_dict['Adaptation/hist_latent_loss'] = locs['mean_hist_latent_loss']
         wandb_dict['Adaptation/priv_reg_loss'] = locs['mean_priv_reg_loss']
         wandb_dict['Adaptation/priv_ref_lambda'] = locs['priv_reg_coef']
@@ -304,7 +374,7 @@ class OnPolicyRunnerMimic:
         if locs['grad_penalty_coef'] != 0:
             wandb_dict['Loss/grad_penalty_loss'] = locs['mean_grad_penalty_loss']
             wandb_dict['Scale/grad_penalty_coef'] = locs["grad_penalty_coef"]
-        
+
         if locs['mean_motion_difficulty'] != 0:
             wandb_dict['Scale/motion_difficulty'] = locs["mean_motion_difficulty"]
 
@@ -334,6 +404,7 @@ class OnPolicyRunnerMimic:
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{anyadapter_log_string}"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward (total):':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
@@ -346,6 +417,7 @@ class OnPolicyRunnerMimic:
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{anyadapter_log_string}"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n""")
 
         log_string += f"""{'-' * width}\n"""
@@ -407,15 +479,14 @@ class OnPolicyRunnerMimic:
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic.act_inference
-    
+
     def get_actor_critic(self, device=None):
         self.alg.actor_critic.eval() # switch to evaluation mode (dropout for example)
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic
-    
+
     def get_normalizer(self, device=None):
         if device is not None:
             self.normalizer.to(device)
         return self.normalizer
-    

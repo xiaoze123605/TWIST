@@ -1,6 +1,7 @@
 import argparse
 import json
 import time
+import sys
 import numpy as np
 import redis
 import mujoco
@@ -12,6 +13,13 @@ from tqdm import tqdm
 from data_utils.params import DEFAULT_MIMIC_OBS
 import os
 from data_utils.rot_utils import quatToEuler
+
+# AnyAdapter runtime support (optional)
+try:
+    from twist_anyadapter_runtime import AnyAdapterRuntime, AnyAdapterRuntimeConfig
+    _ANYADAPTER_AVAILABLE = True
+except ImportError:
+    _ANYADAPTER_AVAILABLE = False
 
 def draw_root_velocity(mujoco_model, mujoco_data, mujoco_viewer, tgt_root_vel, init_geom_id, root_name, rgba_velocity=[1, 1, 0, 1]):
     """
@@ -68,12 +76,13 @@ def aggregate_wrist_dof_pos(body_dof_pos, wrist_dof_pos):
     return whole_body_pd_target
     
 class RealTimePolicyController:
-    def __init__(self, 
-                 xml_file, 
-                 policy_path, 
-                 device='cuda', 
-                 record_video=False):
-        
+    def __init__(self,
+                 xml_file,
+                 policy_path,
+                 device='cuda',
+                 record_video=False,
+                 use_anyadapter=False):
+
         self.redis_client = None
         try:
             self.redis_client = redis.Redis(host='localhost', port=6379, db=0)
@@ -81,10 +90,32 @@ class RealTimePolicyController:
             print(f"Error connecting to Redis: {e}")
 
         self.device = device
+        self.use_anyadapter = use_anyadapter
 
-        # Load policy
-        self.policy = torch.jit.load(policy_path, map_location=device)
-        print(f"Policy loaded from {policy_path}")
+        if use_anyadapter:
+            if not _ANYADAPTER_AVAILABLE:
+                raise ImportError(
+                    "AnyAdapter runtime not found. Ensure deploy_real/ is on PYTHONPATH."
+                )
+            # AnyAdapterRuntime wraps the combined JIT (base + adapter) and
+            # maintains the history buffer externally.
+            self.anyadapter_cfg = AnyAdapterRuntimeConfig(
+                base_obs_dim=1155,
+                num_actions=23,
+                history_len=20,
+                state_indices=list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82)),
+                policy_path=policy_path,
+                device=device,
+                action_clip=10.0,
+                action_ema_alpha=0.4,  # suppress high-frequency adapter jitter
+            )
+            self.anyadapter_runtime = AnyAdapterRuntime(self.anyadapter_cfg)
+            self.policy = None  # not used directly
+            print(f"[AnyAdapter] Runtime loaded, policy: {policy_path}")
+        else:
+            # Load original TWIST JIT policy directly
+            self.policy = torch.jit.load(policy_path, map_location=device)
+            print(f"Policy loaded from {policy_path}")
 
         # Create MuJoCo sim
         self.model = mujoco.MjModel.from_xml_path(xml_file)
@@ -229,6 +260,8 @@ class RealTimePolicyController:
 
         self.reset_sim()
         self.reset(self.mujoco_default_dof_pos)
+        if self.use_anyadapter:
+            self.anyadapter_runtime.reset()
 
         steps = int(self.sim_duration / self.sim_dt)
         pbar = tqdm(range(steps), desc="Simulating...")
@@ -279,7 +312,10 @@ class RealTimePolicyController:
 
                     obs_tensor = torch.from_numpy(obs_buf).float().unsqueeze(0).to(self.device)
                     with torch.no_grad():
-                        raw_action = self.policy(obs_tensor).cpu().numpy().squeeze()
+                        if self.use_anyadapter:
+                            raw_action = self.anyadapter_runtime.act(obs_buf)
+                        else:
+                            raw_action = self.policy(obs_tensor).cpu().numpy().squeeze()
                     
                     self.last_action = raw_action
                     raw_action = np.clip(raw_action, -10., 10.)
@@ -326,6 +362,7 @@ def main_low_level_sim(args):
         policy_path=args.policy_path,
         device='cuda',
         record_video=args.record_video,
+        use_anyadapter=args.use_anyadapter,
     )
     controller.run()
 
@@ -341,6 +378,7 @@ if __name__ == "__main__":
                         )
                         
     parser.add_argument("--record_video", action="store_true", help="Record a video")
+    parser.add_argument("--use_anyadapter", action="store_true", help="Use AnyAdapter runtime wrapper")
     args = parser.parse_args()
 
     args.record_proprio = True

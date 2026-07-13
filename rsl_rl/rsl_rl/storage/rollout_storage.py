@@ -37,6 +37,7 @@ class RolloutStorage:
     class Transition:
         def __init__(self):
             self.observations = None
+            self.next_observations = None
             self.critic_observations = None
             self.actions = None
             self.rewards = None
@@ -59,6 +60,8 @@ class RolloutStorage:
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
+        self.next_observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
+        self.next_observations_available = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
 
         if privileged_obs_shape[0] is not None:
             self.privileged_observations = torch.zeros(num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device)
@@ -89,6 +92,11 @@ class RolloutStorage:
         if self.step >= self.num_transitions_per_env:
             raise AssertionError("Rollout buffer overflow")
         self.observations[self.step].copy_(transition.observations)
+        if transition.next_observations is not None:
+            self.next_observations[self.step].copy_(transition.next_observations)
+            self.next_observations_available[self.step].fill_(1)
+        else:
+            self.next_observations_available[self.step].zero_()
         if self.privileged_observations is not None: self.privileged_observations[self.step].copy_(transition.critic_observations)
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
@@ -120,6 +128,7 @@ class RolloutStorage:
 
     def clear(self):
         self.step = 0
+        self.next_observations_available.zero_()
 
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0
@@ -191,6 +200,52 @@ class RolloutStorage:
                 
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+
+    def mini_batch_generator_anyadapter(self, num_mini_batches, num_epochs=8):
+        batch_size = self.num_envs * self.num_transitions_per_env
+        mini_batch_size = batch_size // num_mini_batches
+        indices = torch.randperm(num_mini_batches * mini_batch_size, requires_grad=False, device=self.device)
+
+        observations = self.observations.flatten(0, 1)
+        next_observations = self.next_observations.flatten(0, 1)
+        next_observations_available = self.next_observations_available.flatten(0, 1)
+
+        if self.privileged_observations is not None:
+            critic_observations = self.privileged_observations.flatten(0, 1)
+        else:
+            critic_observations = observations
+
+        actions = self.actions.flatten(0, 1)
+        dones = self.dones.flatten(0, 1)
+        values = self.values.flatten(0, 1)
+        returns = self.returns.flatten(0, 1)
+        old_actions_log_prob = self.actions_log_prob.flatten(0, 1)
+        advantages = self.advantages.flatten(0, 1)
+        old_mu = self.mu.flatten(0, 1)
+        old_sigma = self.sigma.flatten(0, 1)
+
+        for epoch in range(num_epochs):
+            for i in range(num_mini_batches):
+                start = i * mini_batch_size
+                end = (i + 1) * mini_batch_size
+                batch_idx = indices[start:end]
+
+                yield (
+                    observations[batch_idx],
+                    critic_observations[batch_idx],
+                    actions[batch_idx],
+                    values[batch_idx],
+                    advantages[batch_idx],
+                    returns[batch_idx],
+                    old_actions_log_prob[batch_idx],
+                    old_mu[batch_idx],
+                    old_sigma[batch_idx],
+                    (None, None),
+                    None,
+                    next_observations[batch_idx],
+                    dones[batch_idx],
+                    next_observations_available[batch_idx],
+                )
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
