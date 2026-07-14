@@ -21,6 +21,14 @@ ANYADAPTER_STATE_INDICES = (
     list(range(59, 82))    # dof_vel
 )
 
+DEFAULT_REF_DOF_POS = [
+    -0.2, 0.0, 0.0, 0.4, -0.2, 0.0,
+    -0.2, 0.0, 0.0, 0.4, -0.2, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.4, 0.0, 1.2,
+    0.0, -0.4, 0.0, 1.2,
+]
+
 
 class G1MimicStuAnyAdapterCfg(G1MimicStuRLCfg):
     class env(G1MimicStuRLCfg.env):
@@ -144,4 +152,54 @@ class G1MimicStuAnyAdapterV2CfgPPO(G1MimicPrivCfgPPO):
         world_model_loss_type = "smooth_l1"
         # Weight decay on adapter + history_encoder params to prevent large
         # weight norms that cause tanh saturation / action jitter.
+        weight_decay = 1e-4
+
+
+# ======================== Safe Stand-Preserving ========================
+
+class G1MimicStuAnyAdapterSafeCfg(G1MimicStuAnyAdapterV2Cfg):
+    class env(G1MimicStuAnyAdapterV2Cfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+
+
+class G1MimicStuAnyAdapterSafeCfgPPO(G1MimicPrivCfgPPO):
+    class runner(G1MimicPrivCfgPPO.runner):
+        policy_class_name = "TwistAnyAdapterActorCritic"
+        algorithm_class_name = "PPOAnyAdapter"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_anyadapter_safe"
+        run_name = ""
+
+    class policy(G1MimicPrivCfgPPO.policy):
+        # Must point to the frozen exported TWIST student JIT actor.
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0721_twist_rlbcstu/traced/0721_twist_rlbcstu-23500-jit.pt"
+
+        base_obs_dim = 1155
+        history_len = 20
+        hist_state_dim = 51
+        history_frame_dim = 74
+        wm_target_indices = ANYADAPTER_STATE_INDICES
+        default_ref_dof_pos = DEFAULT_REF_DOF_POS
+
+        latent_dim = 32
+        adapter_hidden_dims = [128, 128]
+        world_model_hidden_dims = [256, 256]
+        critic_hidden_dims = [512, 256, 128]
+        action_delta_scale = 0.02
+        adapter_gain = 1.0
+        init_noise_std = 0.05
+        freeze_base = True
+        activation = "elu"
+        use_conv_history = True
+
+    class algorithm(G1MimicPrivCfgPPO.algorithm):
+        world_model_loss_coef = 0.05
+        adapter_reg_coef = 0.05
+        stand_anchor_coef = 2.0
+        synthetic_stand_anchor_coef = 2.0
+        synthetic_stand_root_height = 0.793
+        stand_vel_threshold = 0.05
+        stand_dof_threshold = 0.15
+        world_model_loss_type = "smooth_l1"
         weight_decay = 1e-4

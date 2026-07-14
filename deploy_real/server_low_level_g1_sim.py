@@ -14,6 +14,12 @@ from data_utils.params import DEFAULT_MIMIC_OBS
 import os
 from data_utils.rot_utils import quatToEuler
 
+BASE_OBS_DIM = 1155
+ANYADAPTER_OBS_DIM = 2635
+NUM_ACTIONS = 23
+ANYADAPTER_HISTORY_LEN = 20
+ANYADAPTER_STATE_INDICES = list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82))
+
 # AnyAdapter runtime support (optional)
 try:
     from twist_anyadapter_runtime import AnyAdapterRuntime, AnyAdapterRuntimeConfig
@@ -74,6 +80,35 @@ def aggregate_wrist_dof_pos(body_dof_pos, wrist_dof_pos):
     whole_body_pd_target[wrist_ids] = wrist_dof_pos
     
     return whole_body_pd_target
+
+
+def _policy_accepts_obs_dim(policy_path, device, obs_dim):
+    try:
+        policy = torch.jit.load(policy_path, map_location=device)
+        policy.eval()
+        with torch.no_grad():
+            out = policy(torch.zeros(1, obs_dim, device=device))
+        return out.shape[-1] == NUM_ACTIONS
+    except Exception:
+        return False
+
+
+def _should_use_anyadapter(policy_path, device, requested_anyadapter):
+    if requested_anyadapter:
+        return True
+    accepts_base = _policy_accepts_obs_dim(policy_path, device, BASE_OBS_DIM)
+    if accepts_base:
+        return False
+    accepts_augmented = _policy_accepts_obs_dim(policy_path, device, ANYADAPTER_OBS_DIM)
+    if accepts_augmented:
+        print(
+            "[AnyAdapter] Detected 2635-D AnyAdapter policy; "
+            "enabling runtime history wrapper automatically."
+        )
+        return True
+    raise RuntimeError(
+        f"Policy does not accept {BASE_OBS_DIM}-D TWIST obs or {ANYADAPTER_OBS_DIM}-D AnyAdapter obs: {policy_path}"
+    )
     
 class RealTimePolicyController:
     def __init__(self,
@@ -90,9 +125,9 @@ class RealTimePolicyController:
             print(f"Error connecting to Redis: {e}")
 
         self.device = device
-        self.use_anyadapter = use_anyadapter
+        self.use_anyadapter = _should_use_anyadapter(policy_path, device, use_anyadapter)
 
-        if use_anyadapter:
+        if self.use_anyadapter:
             if not _ANYADAPTER_AVAILABLE:
                 raise ImportError(
                     "AnyAdapter runtime not found. Ensure deploy_real/ is on PYTHONPATH."
@@ -100,10 +135,10 @@ class RealTimePolicyController:
             # AnyAdapterRuntime wraps the combined JIT (base + adapter) and
             # maintains the history buffer externally.
             self.anyadapter_cfg = AnyAdapterRuntimeConfig(
-                base_obs_dim=1155,
-                num_actions=23,
-                history_len=20,
-                state_indices=list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82)),
+                base_obs_dim=BASE_OBS_DIM,
+                num_actions=NUM_ACTIONS,
+                history_len=ANYADAPTER_HISTORY_LEN,
+                state_indices=ANYADAPTER_STATE_INDICES,
                 policy_path=policy_path,
                 device=device,
                 action_clip=10.0,

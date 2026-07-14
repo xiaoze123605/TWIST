@@ -355,6 +355,14 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/world_model_loss_skipped'] = anyadapter_metrics.get("world_model_loss_skipped", 0.0)
             wandb_dict['AnyAdapter/adapter_delta_l2'] = anyadapter_metrics.get("adapter_delta_l2", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
+            wandb_dict['AnyAdapter/stand_anchor_loss'] = anyadapter_metrics.get("stand_anchor_loss", 0.0)
+            wandb_dict['AnyAdapter/synthetic_stand_anchor_loss'] = anyadapter_metrics.get("synthetic_stand_anchor_loss", 0.0)
+            wandb_dict['AnyAdapter/stand_sample_ratio'] = anyadapter_metrics.get("stand_sample_ratio", 0.0)
+            wandb_dict['AnyAdapter/history_encoder_ppo_grad_norm'] = anyadapter_metrics.get("history_encoder_ppo_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/history_encoder_wm_grad_norm'] = anyadapter_metrics.get("history_encoder_wm_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/adapter_grad_norm'] = anyadapter_metrics.get("adapter_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/max_abs_delta_action'] = anyadapter_metrics.get("max_abs_delta_action", 0.0)
+            wandb_dict['AnyAdapter/mean_abs_delta_action'] = anyadapter_metrics.get("mean_abs_delta_action", 0.0)
             wandb_dict['AnyAdapter/surrogate_loss'] = anyadapter_metrics.get("surrogate_loss", locs['mean_surrogate_loss'])
             wandb_dict['AnyAdapter/value_loss'] = anyadapter_metrics.get("value_loss", locs['mean_value_loss'])
             anyadapter_log_string = (
@@ -362,6 +370,14 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter wm skipped:':>{pad}} {anyadapter_metrics.get('world_model_loss_skipped', 0.0):.0f}\n"""
                 f"""{'AnyAdapter delta L2:':>{pad}} {anyadapter_metrics.get('adapter_delta_l2', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter stand anchor:':>{pad}} {anyadapter_metrics.get('stand_anchor_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter synth stand:':>{pad}} {anyadapter_metrics.get('synthetic_stand_anchor_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter stand ratio:':>{pad}} {anyadapter_metrics.get('stand_sample_ratio', 0.0):.6f}\n"""
+                f"""{'AnyAdapter hist PPO grad:':>{pad}} {anyadapter_metrics.get('history_encoder_ppo_grad_norm', 0.0):.6f}\n"""
+                f"""{'AnyAdapter hist WM grad:':>{pad}} {anyadapter_metrics.get('history_encoder_wm_grad_norm', 0.0):.6f}\n"""
+                f"""{'AnyAdapter adapter grad:':>{pad}} {anyadapter_metrics.get('adapter_grad_norm', 0.0):.6f}\n"""
+                f"""{'AnyAdapter max |delta|:':>{pad}} {anyadapter_metrics.get('max_abs_delta_action', 0.0):.6f}\n"""
+                f"""{'AnyAdapter mean |delta|:':>{pad}} {anyadapter_metrics.get('mean_abs_delta_action', 0.0):.6f}\n"""
                 f"""{'AnyAdapter surrogate:':>{pad}} {anyadapter_metrics.get('surrogate_loss', locs['mean_surrogate_loss']):.6f}\n"""
                 f"""{'AnyAdapter value loss:':>{pad}} {anyadapter_metrics.get('value_loss', locs['mean_value_loss']):.6f}\n"""
             )
@@ -455,6 +471,10 @@ class OnPolicyRunnerMimic:
             'iter': self.current_learning_iteration,
             'infos': infos,
             }
+        if hasattr(self.alg, "ppo_optimizer"):
+            state_dict['ppo_optimizer_state_dict'] = self.alg.ppo_optimizer.state_dict()
+        if hasattr(self.alg, "wm_optimizer"):
+            state_dict['wm_optimizer_state_dict'] = self.alg.wm_optimizer.state_dict()
         torch.save(state_dict, path)
 
     def load(self, path, load_optimizer=True):
@@ -467,6 +487,10 @@ class OnPolicyRunnerMimic:
             self.critic_normalizer = loaded_dict['critic_normalizer']
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+            if hasattr(self.alg, "ppo_optimizer") and 'ppo_optimizer_state_dict' in loaded_dict:
+                self.alg.ppo_optimizer.load_state_dict(loaded_dict['ppo_optimizer_state_dict'])
+            if hasattr(self.alg, "wm_optimizer") and 'wm_optimizer_state_dict' in loaded_dict:
+                self.alg.wm_optimizer.load_state_dict(loaded_dict['wm_optimizer_state_dict'])
         # self.current_learning_iteration = loaded_dict['iter']
         self.current_learning_iteration = int(os.path.basename(path).split("_")[1].split(".")[0])
         self.env.global_counter = self.current_learning_iteration * 24

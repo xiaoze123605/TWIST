@@ -27,6 +27,11 @@ class PPOAnyAdapter(PPO):
         *args,
         world_model_loss_coef: float = 0.1,
         adapter_reg_coef: float = 1e-3,
+        stand_anchor_coef: float = 1.0,
+        synthetic_stand_anchor_coef: float = 0.0,
+        synthetic_stand_root_height: float = 0.793,
+        stand_vel_threshold: float = 0.05,
+        stand_dof_threshold: float = 0.15,
         world_model_loss_type: str = "smooth_l1",
         weight_decay: float = 0.0,
         **kwargs,
@@ -34,18 +39,33 @@ class PPOAnyAdapter(PPO):
         super().__init__(*args, **kwargs)
         self.world_model_loss_coef = float(world_model_loss_coef)
         self.adapter_reg_coef = float(adapter_reg_coef)
+        self.stand_anchor_coef = float(stand_anchor_coef)
+        self.synthetic_stand_anchor_coef = float(synthetic_stand_anchor_coef)
+        self.synthetic_stand_root_height = float(synthetic_stand_root_height)
+        self.stand_vel_threshold = float(stand_vel_threshold)
+        self.stand_dof_threshold = float(stand_dof_threshold)
         self.world_model_loss_type = world_model_loss_type
         self.weight_decay = float(weight_decay)
         self.skip_dagger_update = True
         self.requires_next_observations = True
 
-        # Only train modules with requires_grad=True.  The frozen JIT base actor
-        # has no trainable params, so it is ignored here.
-        self.optimizer = torch.optim.Adam(
-            [p for p in self.actor_critic.parameters() if p.requires_grad],
+        self.ppo_params = []
+        self.ppo_params += [p for p in self.actor_critic.adapter.parameters() if p.requires_grad]
+        self.ppo_params += [p for p in self.actor_critic.critic.parameters() if p.requires_grad]
+        if getattr(self.actor_critic, "std", None) is not None and self.actor_critic.std.requires_grad:
+            self.ppo_params.append(self.actor_critic.std)
+
+        self.wm_params = []
+        self.wm_params += [p for p in self.actor_critic.history_encoder.parameters() if p.requires_grad]
+        self.wm_params += [p for p in self.actor_critic.world_model.parameters() if p.requires_grad]
+
+        self.ppo_optimizer = torch.optim.Adam(
+            self.ppo_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
+        self.wm_optimizer = torch.optim.Adam(self.wm_params, lr=self.learning_rate)
+        self.optimizer = self.ppo_optimizer
         self.anyadapter_metrics = {}
         self._wm_target_warning_printed = False
 
@@ -117,12 +137,67 @@ class PPOAnyAdapter(PPO):
             loss_per_sample = loss_per_dim.mean(dim=-1, keepdim=True)
             return (loss_per_sample * valid_mask).sum() / valid_count
 
+    def _stand_anchor_loss_from_batch(self, obs_batch):
+        base_obs, _ = self.actor_critic.split_obs(obs_batch)
+        if base_obs.shape[1] < 31:
+            zero = obs_batch.new_tensor(0.0)
+            return zero, zero
+
+        root_vel = base_obs[:, 4:7]
+        yaw_ang_vel = base_obs[:, 7]
+        ref_dof_pos = base_obs[:, 8:31]
+        default_ref = self.actor_critic.default_ref_dof_pos.to(base_obs.device).view(1, -1)
+
+        stand_mask = (
+            (torch.norm(root_vel, dim=-1) < self.stand_vel_threshold)
+            & (torch.abs(yaw_ang_vel) < self.stand_vel_threshold)
+            & (torch.mean(torch.abs(ref_dof_pos - default_ref), dim=-1) < self.stand_dof_threshold)
+        )
+        stand_ratio = stand_mask.float().mean()
+        if not torch.any(stand_mask):
+            return obs_batch.new_tensor(0.0), stand_ratio
+
+        delta = self.actor_critic.action_delta(obs_batch[stand_mask], detach_history=True)
+        return (delta ** 2).mean(), stand_ratio
+
+    def _synthetic_stand_anchor_loss_from_batch(self, obs_batch):
+        stand_obs = obs_batch.clone()
+        base_obs, _ = self.actor_critic.split_obs(stand_obs)
+        default_ref = self.actor_critic.default_ref_dof_pos.to(base_obs.device)
+        base_obs[:, 0] = self.synthetic_stand_root_height
+        base_obs[:, 1:4] = 0.0
+        base_obs[:, 4:7] = 0.0
+        base_obs[:, 7] = 0.0
+        base_obs[:, 8:31] = default_ref.view(1, -1)
+        delta = self.actor_critic.action_delta(stand_obs, detach_history=True)
+        return (delta ** 2).mean()
+
+    @staticmethod
+    def _grad_norm(parameters):
+        sq_sum = None
+        for p in parameters:
+            if p.grad is None:
+                continue
+            norm_sq = torch.sum(p.grad.detach() ** 2)
+            sq_sum = norm_sq if sq_sum is None else sq_sum + norm_sq
+        if sq_sum is None:
+            return 0.0
+        return float(torch.sqrt(sq_sum).detach().cpu())
+
     def update(self):
         mean_value_loss = 0.0
         mean_surrogate_loss = 0.0
         mean_wm_loss = 0.0
         mean_adapter_reg_loss = 0.0
         mean_adapter_delta_l2 = 0.0
+        mean_stand_anchor_loss = 0.0
+        mean_synthetic_stand_anchor_loss = 0.0
+        mean_stand_sample_ratio = 0.0
+        mean_history_encoder_ppo_grad_norm = 0.0
+        mean_history_encoder_wm_grad_norm = 0.0
+        mean_adapter_grad_norm = 0.0
+        mean_max_abs_delta_action = 0.0
+        mean_mean_abs_delta_action = 0.0
         wm_loss_skipped = False
 
         if self.actor_critic.is_recurrent:
@@ -195,8 +270,33 @@ class PPOAnyAdapter(PPO):
 
             wm_loss = obs_batch.new_tensor(0.0)
             adapter_reg_loss = obs_batch.new_tensor(0.0)
-            if hasattr(self.actor_critic, "world_model_loss") and self.world_model_loss_coef > 0.0:
+            stand_anchor_loss = obs_batch.new_tensor(0.0)
+            synthetic_stand_anchor_loss = obs_batch.new_tensor(0.0)
+            stand_sample_ratio = obs_batch.new_tensor(0.0)
+            if hasattr(self.actor_critic, "adapter_regularization_loss") and self.adapter_reg_coef > 0.0:
+                adapter_reg_loss, adapter_info = self.actor_critic.adapter_regularization_loss(obs_batch)
+                loss = loss + self.adapter_reg_coef * adapter_reg_loss
+                mean_adapter_delta_l2 += adapter_info.get("adapter_delta_l2", adapter_reg_loss.item())
+                mean_max_abs_delta_action += adapter_info.get("max_abs_delta_action", 0.0)
+                mean_mean_abs_delta_action += adapter_info.get("mean_abs_delta_action", 0.0)
+            if self.stand_anchor_coef > 0.0:
+                stand_anchor_loss, stand_sample_ratio = self._stand_anchor_loss_from_batch(obs_batch)
+                loss = loss + self.stand_anchor_coef * stand_anchor_loss
+            if self.synthetic_stand_anchor_coef > 0.0:
+                synthetic_stand_anchor_loss = self._synthetic_stand_anchor_loss_from_batch(obs_batch)
+                loss = loss + self.synthetic_stand_anchor_coef * synthetic_stand_anchor_loss
+
+            self.ppo_optimizer.zero_grad()
+            self.wm_optimizer.zero_grad()
+            loss.backward()
+            history_encoder_ppo_grad_norm = self._grad_norm(self.actor_critic.history_encoder.parameters())
+            adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
+            nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
+            self.ppo_optimizer.step()
+
+            if hasattr(self.actor_critic, "predict_world_model") and self.world_model_loss_coef > 0.0:
                 if self._has_world_model_target():
+                    self.wm_optimizer.zero_grad()
                     wm_loss = self._world_model_loss_from_batch(
                         obs_batch,
                         actions_batch,
@@ -204,24 +304,27 @@ class PPOAnyAdapter(PPO):
                         dones_batch,
                         next_obs_available_batch,
                     )
-                    loss = loss + self.world_model_loss_coef * wm_loss
+                    (self.world_model_loss_coef * wm_loss).backward()
+                    history_encoder_wm_grad_norm = self._grad_norm(self.actor_critic.history_encoder.parameters())
+                    nn.utils.clip_grad_norm_(self.wm_params, self.max_grad_norm)
+                    self.wm_optimizer.step()
                 else:
+                    history_encoder_wm_grad_norm = 0.0
                     wm_loss_skipped = True
                     self._warn_missing_world_model_target_once()
-            if hasattr(self.actor_critic, "adapter_regularization_loss") and self.adapter_reg_coef > 0.0:
-                adapter_reg_loss, adapter_info = self.actor_critic.adapter_regularization_loss(obs_batch)
-                loss = loss + self.adapter_reg_coef * adapter_reg_loss
-                mean_adapter_delta_l2 += adapter_info.get("adapter_delta_l2", adapter_reg_loss.item())
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-            self.optimizer.step()
+            else:
+                history_encoder_wm_grad_norm = 0.0
 
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_wm_loss += wm_loss.item()
             mean_adapter_reg_loss += adapter_reg_loss.item()
+            mean_stand_anchor_loss += stand_anchor_loss.item()
+            mean_synthetic_stand_anchor_loss += synthetic_stand_anchor_loss.item()
+            mean_stand_sample_ratio += stand_sample_ratio.item()
+            mean_history_encoder_ppo_grad_norm += history_encoder_ppo_grad_norm
+            mean_history_encoder_wm_grad_norm += history_encoder_wm_grad_norm
+            mean_adapter_grad_norm += adapter_grad_norm
 
         if self.fix_std:
             std_stage = min(max((self.counter - self.std_schedule[2]), 0) / self.std_schedule[3], 1)
@@ -235,6 +338,14 @@ class PPOAnyAdapter(PPO):
             "world_model_loss_skipped": float(wm_loss_skipped),
             "adapter_delta_l2": mean_adapter_delta_l2 / num_updates,
             "adapter_reg_loss": mean_adapter_reg_loss / num_updates,
+            "stand_anchor_loss": mean_stand_anchor_loss / num_updates,
+            "synthetic_stand_anchor_loss": mean_synthetic_stand_anchor_loss / num_updates,
+            "stand_sample_ratio": mean_stand_sample_ratio / num_updates,
+            "history_encoder_ppo_grad_norm": mean_history_encoder_ppo_grad_norm / num_updates,
+            "history_encoder_wm_grad_norm": mean_history_encoder_wm_grad_norm / num_updates,
+            "adapter_grad_norm": mean_adapter_grad_norm / num_updates,
+            "max_abs_delta_action": mean_max_abs_delta_action / num_updates,
+            "mean_abs_delta_action": mean_mean_abs_delta_action / num_updates,
             "surrogate_loss": mean_surrogate_loss / num_updates,
             "value_loss": mean_value_loss / num_updates,
         }

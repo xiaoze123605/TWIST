@@ -26,7 +26,6 @@ wm_target_indices in the TWIST config.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence, Tuple
 
 import torch
@@ -202,6 +201,8 @@ class TwistAnyAdapterActorCritic(nn.Module):
         init_noise_std: float = 0.2,
         fix_action_std: bool = False,
         action_delta_scale: float = 0.25,
+        adapter_gain: float = 1.0,
+        default_ref_dof_pos: Optional[Sequence[float]] = None,
         use_conv_history: bool = True,
         freeze_base: bool = True,
         **kwargs,
@@ -233,6 +234,12 @@ class TwistAnyAdapterActorCritic(nn.Module):
         self.latent_dim = int(latent_dim)
         self.fix_action_std = bool(fix_action_std)
         self.wm_target_indices = None if wm_target_indices is None else torch.as_tensor(wm_target_indices, dtype=torch.long)
+        self.adapter_gain = float(adapter_gain)
+        if default_ref_dof_pos is None:
+            default_ref_dof_pos = [0.0] * num_actions
+        if len(default_ref_dof_pos) != num_actions:
+            raise ValueError(f"default_ref_dof_pos must have {num_actions} values, got {len(default_ref_dof_pos)}.")
+        self.register_buffer("default_ref_dof_pos", torch.as_tensor(default_ref_dof_pos, dtype=torch.float32))
 
         self.base_actor = torch.jit.load(base_actor_jit_path, map_location="cpu")
         self.base_actor.eval()
@@ -301,31 +308,37 @@ class TwistAnyAdapterActorCritic(nn.Module):
         history = hist_flat.reshape(obs.shape[0], self.history_len, self.history_frame_dim)
         return base_obs, history
 
-    def actor_mean(self, observations: torch.Tensor) -> torch.Tensor:
-        base_obs, history = self.split_obs(observations)
+    def encode_history_for_policy(self, history: torch.Tensor) -> torch.Tensor:
+        return self.history_encoder(history).detach()
+
+    def encode_history_for_world_model(self, history: torch.Tensor) -> torch.Tensor:
+        return self.history_encoder(history)
+
+    def base_action(self, observations: torch.Tensor) -> torch.Tensor:
+        base_obs, _ = self.split_obs(observations)
         with torch.no_grad():
-            base_action = self.base_actor(base_obs)
-        # NOTE: We intentionally do NOT detach the history embedding here.
-        # The OpenTrack design (detach embedding from PPO) requires a well-
-        # converged world model which we do not have early in training.
-        # Letting PPO gradients flow through the history encoder allows the
-        # adapter and encoder to co-adapt, while the world model auxiliary
-        # loss provides dynamics regularization.
-        z = self.history_encoder(history)
-        delta_action = self.adapter(base_obs, z)
-        return base_action + delta_action
+            return self.base_actor(base_obs)
+
+    def action_delta(self, observations: torch.Tensor, detach_history: bool = True) -> torch.Tensor:
+        base_obs, history = self.split_obs(observations)
+        if detach_history:
+            z = self.encode_history_for_policy(history)
+        else:
+            z = self.encode_history_for_world_model(history)
+        return self.adapter(base_obs, z)
+
+    def actor_mean(self, observations: torch.Tensor) -> torch.Tensor:
+        return self.base_action(observations) + self.adapter_gain * self.action_delta(observations, detach_history=True)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         return self.actor_mean(observations)
 
     def get_adapter_delta(self, observations: torch.Tensor) -> torch.Tensor:
-        base_obs, history = self.split_obs(observations)
-        z = self.history_encoder(history)
-        return self.adapter(base_obs, z)
+        return self.action_delta(observations, detach_history=True)
 
     def predict_world_model(self, observations: torch.Tensor, actions: Optional[torch.Tensor] = None) -> torch.Tensor:
         _, history = self.split_obs(observations)
-        z = self.history_encoder(history)
+        z = self.encode_history_for_world_model(history)
         prev_frame = history[:, -1]
         prev_state = prev_frame[:, : self.hist_state_dim]
         if actions is None:
@@ -376,7 +389,7 @@ class TwistAnyAdapterActorCritic(nn.Module):
 
     def world_model_loss(self, observations: torch.Tensor, loss_type: str = "smooth_l1") -> Tuple[torch.Tensor, dict]:
         base_obs, history = self.split_obs(observations)
-        z = self.history_encoder(history)
+        z = self.encode_history_for_world_model(history)
         prev_frame = history[:, -1]
         prev_state = prev_frame[:, : self.hist_state_dim]
         prev_action = prev_frame[:, self.hist_state_dim : self.hist_state_dim + self.num_actions]
@@ -401,4 +414,6 @@ class TwistAnyAdapterActorCritic(nn.Module):
         return loss, {
             "adapter_delta_l2": float(delta_l2.detach().cpu()),
             "adapter_reg_loss": float(loss.detach().cpu()),
+            "max_abs_delta_action": float(delta.detach().abs().max().cpu()),
+            "mean_abs_delta_action": float(delta.detach().abs().mean().cpu()),
         }

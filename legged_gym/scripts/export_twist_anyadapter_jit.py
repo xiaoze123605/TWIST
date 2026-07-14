@@ -15,20 +15,44 @@ import torch
 from rsl_rl.modules.actor_critic_twist_anyadapter import TwistAnyAdapterActorCritic
 
 
+DEFAULT_BASE_ACTOR_JIT_PATH = (
+    "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/"
+    "0721_twist_rlbcstu/traced/0721_twist_rlbcstu-23500-jit.pt"
+)
+DEFAULT_BASE_OBS_DIM = 1155
+DEFAULT_NUM_ACTIONS = 23
+DEFAULT_NUM_CRITIC_OBS = 2635
+DEFAULT_HISTORY_LEN = 20
+DEFAULT_HISTORY_FRAME_DIM = 74
+DEFAULT_HIST_STATE_DIM = 51
+DEFAULT_LATENT_DIM = 32
+DEFAULT_ACTION_DELTA_SCALE = 0.02
+
+
+def default_output_path(ckpt_path: str) -> str:
+    ckpt = Path(ckpt_path)
+    checkpoint_tag = ckpt.stem.replace("model_", "")
+    run_dir = ckpt.parent
+    return str(run_dir / "traced" / f"{run_dir.name}-{checkpoint_tag}-jit.pt")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt", required=True, help="Path to TWIST adapter checkpoint .pt")
-    parser.add_argument("--out", required=True, help="Output JIT actor path")
-    parser.add_argument("--base_actor_jit_path", required=True)
-    parser.add_argument("--base_obs_dim", type=int, required=True)
-    parser.add_argument("--num_actions", type=int, required=True)
-    parser.add_argument("--num_critic_obs", type=int, required=True)
-    parser.add_argument("--history_len", type=int, default=20)
-    parser.add_argument("--history_frame_dim", type=int, required=True)
-    parser.add_argument("--hist_state_dim", type=int, required=True)
-    parser.add_argument("--latent_dim", type=int, default=32)
+    parser.add_argument("--out", default=None, help="Output JIT actor path. Defaults to <run_dir>/traced/<run>-<ckpt>-jit.pt")
+    parser.add_argument("--base_actor_jit_path", default=DEFAULT_BASE_ACTOR_JIT_PATH)
+    parser.add_argument("--base_obs_dim", type=int, default=DEFAULT_BASE_OBS_DIM)
+    parser.add_argument("--num_actions", type=int, default=DEFAULT_NUM_ACTIONS)
+    parser.add_argument("--num_critic_obs", type=int, default=DEFAULT_NUM_CRITIC_OBS)
+    parser.add_argument("--history_len", type=int, default=DEFAULT_HISTORY_LEN)
+    parser.add_argument("--history_frame_dim", type=int, default=DEFAULT_HISTORY_FRAME_DIM)
+    parser.add_argument("--hist_state_dim", type=int, default=DEFAULT_HIST_STATE_DIM)
+    parser.add_argument("--latent_dim", type=int, default=DEFAULT_LATENT_DIM)
+    parser.add_argument("--action_delta_scale", type=float, default=DEFAULT_ACTION_DELTA_SCALE)
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
+    if args.out is None:
+        args.out = default_output_path(args.ckpt)
 
     model = TwistAnyAdapterActorCritic(
         num_prop=args.base_obs_dim,
@@ -42,6 +66,7 @@ def main():
         history_frame_dim=args.history_frame_dim,
         hist_state_dim=args.hist_state_dim,
         latent_dim=args.latent_dim,
+        action_delta_scale=args.action_delta_scale,
     ).to(args.device)
 
     ckpt = torch.load(args.ckpt, map_location=args.device)
