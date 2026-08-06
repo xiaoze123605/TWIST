@@ -146,12 +146,14 @@ More specifically, the pipeline for sim2real deploy is:
 3. now you should be able to ping the robot via `ping 192.168.123.164`.
 4. then use Unitree G1's remote control to enter dev mode, i.e., press the `L2+R2` key combination.
 5. now you should be able to see the robot joints in the damping state.
-6. then run the supported safety-focused low-level controller (see
-   [`deploy_real/README.md`](deploy_real/README.md) for stand-test, replay,
-   dry-run, recovery-test, logging, and OptiTrack procedures):
+6. then run the original TWIST low-level controller for a base policy, or the
+   separate AnyAdapter controller for a V4 policy (see
+   [`deploy_real/README.md`](deploy_real/README.md)):
 ```bash
 cd deploy_real
-python server_low_level_g1_real_v2.py --policy_path PATH/TO/YOUR/JIT/MODEL --net YOUR_NET_INTERFACE_TO_UNITREE_ROBOT
+python server_low_level_g1_real.py --policy_path PATH/TO/BASE_POLICY.pt --net YOUR_NET_INTERFACE_TO_UNITREE_ROBOT
+
+python server_low_level_g1_real_anyadapter.py --policy_path PATH/TO/ANYADAPTER_V4_POLICY.pt --net YOUR_NET_INTERFACE_TO_UNITREE_ROBOT
 ```
 
 Run the low-level controller first and then control the robot via the high-level
@@ -162,7 +164,7 @@ python server_high_level_motion_lib.py --motion_file PATH/TO/YOUR/MOTION/FILE
 
 **6**. Real-time teleop. Use
 `deploy_real/server_motion_optitrack_gmr_clean_bufferfix_v2.py` with
-`deploy_real/server_low_level_g1_real_v2.py`. The file
+the matching base or AnyAdapter low-level controller. The file
 `deploy_real/server_motion_optitrack_v2 (legacy).py` is deprecated and retained
 only for reference. Full commands are in [`deploy_real/README.md`](deploy_real/README.md).
 

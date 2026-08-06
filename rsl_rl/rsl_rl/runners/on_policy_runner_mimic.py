@@ -44,7 +44,7 @@ import builtins
 
 
 import numpy as np
-from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter
+from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter, PPOAny2Track
 from rsl_rl.modules import *
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.env import VecEnv
@@ -149,18 +149,30 @@ class OnPolicyRunnerMimic:
         history_len = self.policy_cfg.get("history_len", None)
         hist_state_dim = self.policy_cfg.get("hist_state_dim", None)
         history_frame_dim = self.policy_cfg.get("history_frame_dim", None)
+        adapter_context_dim = self.policy_cfg.get("adapter_context_dim", 0)
         action_delta_scale = self.policy_cfg.get("action_delta_scale", None)
+        adapter_gain = self.policy_cfg.get("adapter_gain", None)
+        use_tracking_error_adapter_input = self.policy_cfg.get("use_tracking_error_adapter_input", False)
+        compact_adapter_input = self.policy_cfg.get("compact_adapter_input", False)
+        history_policy_grad_scale = self.policy_cfg.get("history_policy_grad_scale", 0.0)
+        base_actor_jit_path = self.policy_cfg.get("base_actor_jit_path", None)
         freeze_base = self.policy_cfg.get("freeze_base", None)
         init_noise_std = self.policy_cfg.get("init_noise_std", None)
         adapter_reg_coef = self.alg_cfg.get("adapter_reg_coef", None)
+        adapter_bias_reg_coef = self.alg_cfg.get("adapter_bias_reg_coef", None)
         world_model_loss_coef = self.alg_cfg.get("world_model_loss_coef", None)
+        joint_encoder_optimization = self.alg_cfg.get("joint_encoder_optimization", False)
         weight_decay = self.alg_cfg.get("weight_decay", None)
 
         expected_full_obs_dim = None
         anyadapter_history_dim = None
         if base_obs_dim is not None and history_len is not None and history_frame_dim is not None:
             anyadapter_history_dim = int(history_len) * int(history_frame_dim)
-            expected_full_obs_dim = int(base_obs_dim) + anyadapter_history_dim
+            expected_full_obs_dim = (
+                int(base_obs_dim)
+                + anyadapter_history_dim
+                + int(adapter_context_dim)
+            )
 
         builtins.print("[AnyAdapter] ========================================")
         builtins.print("[AnyAdapter] runner init")
@@ -168,15 +180,23 @@ class OnPolicyRunnerMimic:
         builtins.print(f"[AnyAdapter] algorithm_class_name: {self.cfg['algorithm_class_name']}")
         builtins.print(f"[AnyAdapter] actor_critic class: {actor_critic.__class__.__name__}")
         builtins.print(f"[AnyAdapter] alg class: {self.alg.__class__.__name__}")
+        builtins.print(f"[AnyAdapter] cfg.policy.base_actor_jit_path: {base_actor_jit_path}")
         builtins.print(f"[AnyAdapter] cfg.policy.base_obs_dim: {base_obs_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.history_len: {history_len}")
         builtins.print(f"[AnyAdapter] cfg.policy.hist_state_dim: {hist_state_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.history_frame_dim: {history_frame_dim}")
+        builtins.print(f"[AnyAdapter] cfg.policy.adapter_context_dim: {adapter_context_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.action_delta_scale: {action_delta_scale}")
+        builtins.print(f"[AnyAdapter] cfg.policy.adapter_gain: {adapter_gain}")
+        builtins.print(f"[AnyAdapter] cfg.policy.use_tracking_error_adapter_input: {use_tracking_error_adapter_input}")
+        builtins.print(f"[AnyAdapter] cfg.policy.compact_adapter_input: {compact_adapter_input}")
+        builtins.print(f"[AnyAdapter] cfg.policy.history_policy_grad_scale: {history_policy_grad_scale}")
         builtins.print(f"[AnyAdapter] cfg.policy.init_noise_std: {init_noise_std}")
         builtins.print(f"[AnyAdapter] cfg.policy.freeze_base: {freeze_base}")
         builtins.print(f"[AnyAdapter] cfg.algorithm.adapter_reg_coef: {adapter_reg_coef}")
+        builtins.print(f"[AnyAdapter] cfg.algorithm.adapter_bias_reg_coef: {adapter_bias_reg_coef}")
         builtins.print(f"[AnyAdapter] cfg.algorithm.world_model_loss_coef: {world_model_loss_coef}")
+        builtins.print(f"[AnyAdapter] cfg.algorithm.joint_encoder_optimization: {joint_encoder_optimization}")
         builtins.print(f"[AnyAdapter] cfg.algorithm.weight_decay: {weight_decay}")
         builtins.print(f"[AnyAdapter] full obs dim: {self.env.num_obs}")
         builtins.print(f"[AnyAdapter] base_obs dim: {base_obs_dim}")
@@ -305,7 +325,9 @@ class OnPolicyRunnerMimic:
                     self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
             ep_infos.clear()
 
-        # self.current_learning_iteration += num_learning_iterations
+        # Keep the final checkpoint name aligned with the completed iteration.
+        # Resume loading already derives this value from model_<iteration>.pt.
+        self.current_learning_iteration = tot_iter
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 
     def _need_normalizer_update(self, iterations, update_iterations):
@@ -353,8 +375,13 @@ class OnPolicyRunnerMimic:
         if anyadapter_metrics:
             wandb_dict['AnyAdapter/world_model_loss'] = anyadapter_metrics.get("world_model_loss", 0.0)
             wandb_dict['AnyAdapter/world_model_loss_skipped'] = anyadapter_metrics.get("world_model_loss_skipped", 0.0)
+            for component in ("ang_vel", "orientation", "dof_pos", "dof_vel"):
+                key = f"world_model_loss_{component}"
+                if key in anyadapter_metrics:
+                    wandb_dict[f'AnyAdapter/{key}'] = anyadapter_metrics[key]
             wandb_dict['AnyAdapter/adapter_delta_l2'] = anyadapter_metrics.get("adapter_delta_l2", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
+            wandb_dict['AnyAdapter/adapter_bias_reg_loss'] = anyadapter_metrics.get("adapter_bias_reg_loss", 0.0)
             wandb_dict['AnyAdapter/stand_anchor_loss'] = anyadapter_metrics.get("stand_anchor_loss", 0.0)
             wandb_dict['AnyAdapter/synthetic_stand_anchor_loss'] = anyadapter_metrics.get("synthetic_stand_anchor_loss", 0.0)
             wandb_dict['AnyAdapter/stand_sample_ratio'] = anyadapter_metrics.get("stand_sample_ratio", 0.0)
@@ -368,8 +395,13 @@ class OnPolicyRunnerMimic:
             anyadapter_log_string = (
                 f"""{'AnyAdapter wm loss:':>{pad}} {anyadapter_metrics.get('world_model_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter wm skipped:':>{pad}} {anyadapter_metrics.get('world_model_loss_skipped', 0.0):.0f}\n"""
+                f"""{'AnyAdapter wm gyro:':>{pad}} {anyadapter_metrics.get('world_model_loss_ang_vel', 0.0):.6f}\n"""
+                f"""{'AnyAdapter wm orient:':>{pad}} {anyadapter_metrics.get('world_model_loss_orientation', 0.0):.6f}\n"""
+                f"""{'AnyAdapter wm dof pos:':>{pad}} {anyadapter_metrics.get('world_model_loss_dof_pos', 0.0):.6f}\n"""
+                f"""{'AnyAdapter wm dof vel:':>{pad}} {anyadapter_metrics.get('world_model_loss_dof_vel', 0.0):.6f}\n"""
                 f"""{'AnyAdapter delta L2:':>{pad}} {anyadapter_metrics.get('adapter_delta_l2', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter bias reg:':>{pad}} {anyadapter_metrics.get('adapter_bias_reg_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter stand anchor:':>{pad}} {anyadapter_metrics.get('stand_anchor_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter synth stand:':>{pad}} {anyadapter_metrics.get('synthetic_stand_anchor_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter stand ratio:':>{pad}} {anyadapter_metrics.get('stand_sample_ratio', 0.0):.6f}\n"""
@@ -481,6 +513,27 @@ class OnPolicyRunnerMimic:
         print("*" * 80)
         print("Loading model from {}...".format(path))
         loaded_dict = torch.load(path, map_location=self.device)
+        if hasattr(self.alg.actor_critic, 'base_actor'):
+            current_base_state = self.alg.actor_critic.base_actor.state_dict()
+            checkpoint_state = loaded_dict['model_state_dict']
+            mismatched_base_keys = []
+            for key, current_value in current_base_state.items():
+                checkpoint_key = 'base_actor.' + key
+                checkpoint_value = checkpoint_state.get(checkpoint_key)
+                if checkpoint_value is None or not torch.equal(
+                    current_value.detach().cpu(), checkpoint_value.detach().cpu()
+                ):
+                    mismatched_base_keys.append(checkpoint_key)
+            if mismatched_base_keys:
+                configured_path = getattr(
+                    self.alg.actor_critic, 'base_actor_jit_path', '<unknown>'
+                )
+                raise RuntimeError(
+                    "AnyAdapter checkpoint base actor does not match the configured "
+                    f"base_actor_jit_path={configured_path}. Start a fresh experiment "
+                    "directory instead of resuming this checkpoint. First mismatch: "
+                    f"{mismatched_base_keys[0]}"
+                )
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
         if self.normalize_obs:
             self.normalizer = loaded_dict['normalizer']

@@ -247,6 +247,52 @@ class RolloutStorage:
                     next_observations_available[batch_idx],
                 )
 
+    def world_model_sequence_generator(self, sequence_length, num_mini_batches, num_epochs=1):
+        """Yield temporally contiguous per-environment rollout windows.
+
+        This is intentionally separate from the PPO generators: PPO samples can
+        remain shuffled, while an autoregressive world model must preserve time.
+        """
+        sequence_length = int(sequence_length)
+        if sequence_length <= 0 or sequence_length > self.num_transitions_per_env:
+            raise ValueError(
+                f"sequence_length must be in [1, {self.num_transitions_per_env}], "
+                f"got {sequence_length}"
+            )
+        envs_per_batch = self.num_envs // num_mini_batches
+        if envs_per_batch <= 0:
+            raise ValueError("num_mini_batches cannot exceed num_envs")
+        usable_envs = envs_per_batch * num_mini_batches
+        max_start = self.num_transitions_per_env - sequence_length
+        time_offsets = torch.arange(sequence_length, device=self.device).view(1, -1)
+
+        for _ in range(num_epochs):
+            env_order = torch.randperm(self.num_envs, device=self.device)[:usable_envs]
+            for batch_index in range(num_mini_batches):
+                start = batch_index * envs_per_batch
+                end = start + envs_per_batch
+                env_ids = env_order[start:end]
+                if max_start > 0:
+                    sequence_starts = torch.randint(
+                        0,
+                        max_start + 1,
+                        (envs_per_batch, 1),
+                        device=self.device,
+                    )
+                else:
+                    sequence_starts = torch.zeros(
+                        envs_per_batch, 1, dtype=torch.long, device=self.device
+                    )
+                time_ids = sequence_starts + time_offsets
+                env_grid = env_ids.view(-1, 1).expand(-1, sequence_length)
+                yield (
+                    self.observations[time_ids, env_grid],
+                    self.actions[time_ids, env_grid],
+                    self.next_observations[time_ids, env_grid],
+                    self.dones[time_ids, env_grid],
+                    self.next_observations_available[time_ids, env_grid],
+                )
+
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
 

@@ -13,12 +13,17 @@ from tqdm import tqdm
 from data_utils.params import DEFAULT_MIMIC_OBS
 import os
 from data_utils.rot_utils import quatToEuler
+from deploy_safety import MIMIC_OBS_DIM, parse_mimic_msg
 
 BASE_OBS_DIM = 1155
 ANYADAPTER_OBS_DIM = 2635
+ANYADAPTER_HEADING_OBS_DIM = 2637
+ANY2TRACK_OBS_DIM = 7001
 NUM_ACTIONS = 23
 ANYADAPTER_HISTORY_LEN = 20
 ANYADAPTER_STATE_INDICES = list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82))
+REDIS_STALE_THRESHOLD = 0.5
+_POLICY_PROBE_ERRORS = {}
 
 # AnyAdapter runtime support (optional)
 try:
@@ -88,8 +93,10 @@ def _policy_accepts_obs_dim(policy_path, device, obs_dim):
         policy.eval()
         with torch.no_grad():
             out = policy(torch.zeros(1, obs_dim, device=device))
+        _POLICY_PROBE_ERRORS.pop((str(device), obs_dim), None)
         return out.shape[-1] == NUM_ACTIONS
-    except Exception:
+    except Exception as exc:
+        _POLICY_PROBE_ERRORS[(str(device), obs_dim)] = str(exc).splitlines()[-1]
         return False
 
 
@@ -106,8 +113,28 @@ def _should_use_anyadapter(policy_path, device, requested_anyadapter):
             "enabling runtime history wrapper automatically."
         )
         return True
+    accepts_heading = _policy_accepts_obs_dim(policy_path, device, ANYADAPTER_HEADING_OBS_DIM)
+    if accepts_heading:
+        print(
+            "[AnyAdapter] Detected 2637-D heading-aware AnyAdapter policy; "
+            "enabling runtime history and heading context automatically."
+        )
+        return True
+    accepts_any2track = _policy_accepts_obs_dim(policy_path, device, ANY2TRACK_OBS_DIM)
+    if accepts_any2track:
+        print(
+            "[Any2Track] Detected 7001-D layer-adapter policy; "
+            "enabling 79-frame runtime history automatically."
+        )
+        return True
     raise RuntimeError(
-        f"Policy does not accept {BASE_OBS_DIM}-D TWIST obs or {ANYADAPTER_OBS_DIM}-D AnyAdapter obs: {policy_path}"
+        f"Policy does not accept {BASE_OBS_DIM}-D TWIST obs, "
+        f"{ANYADAPTER_OBS_DIM}-D AnyAdapter obs, or "
+        f"{ANYADAPTER_HEADING_OBS_DIM}-D heading-aware obs, or "
+        f"{ANY2TRACK_OBS_DIM}-D Any2Track obs: {policy_path}\n"
+        f"{ANY2TRACK_OBS_DIM}-D probe on {device} failed: "
+        f"{_POLICY_PROBE_ERRORS.get((str(device), ANY2TRACK_OBS_DIM), 'unknown error')}\n"
+        "If CUDA is occupied by training, retry with --device cpu."
     )
     
 class RealTimePolicyController:
@@ -116,7 +143,10 @@ class RealTimePolicyController:
                  policy_path,
                  device='cuda',
                  record_video=False,
-                 use_anyadapter=False):
+                 use_anyadapter=False,
+                 anyadapter_ema_alpha=0.0,
+                 debug_policy_stats=False,
+                 debug_policy_stats_steps=20):
 
         self.redis_client = None
         try:
@@ -126,6 +156,14 @@ class RealTimePolicyController:
 
         self.device = device
         self.use_anyadapter = _should_use_anyadapter(policy_path, device, use_anyadapter)
+        self.use_any2track = self.use_anyadapter and _policy_accepts_obs_dim(
+            policy_path, device, ANY2TRACK_OBS_DIM
+        )
+        self.anyadapter_context_dim = (
+            2 if self.use_anyadapter and _policy_accepts_obs_dim(
+                policy_path, device, ANYADAPTER_HEADING_OBS_DIM
+            ) else 0
+        )
 
         if self.use_anyadapter:
             if not _ANYADAPTER_AVAILABLE:
@@ -137,12 +175,14 @@ class RealTimePolicyController:
             self.anyadapter_cfg = AnyAdapterRuntimeConfig(
                 base_obs_dim=BASE_OBS_DIM,
                 num_actions=NUM_ACTIONS,
-                history_len=ANYADAPTER_HISTORY_LEN,
+                history_len=79 if self.use_any2track else ANYADAPTER_HISTORY_LEN,
                 state_indices=ANYADAPTER_STATE_INDICES,
                 policy_path=policy_path,
                 device=device,
                 action_clip=10.0,
-                action_ema_alpha=0.4,  # suppress high-frequency adapter jitter
+                action_ema_alpha=anyadapter_ema_alpha,
+                adapter_context_dim=self.anyadapter_context_dim,
+                fill_history_on_first_observation=self.use_any2track,
             )
             self.anyadapter_runtime = AnyAdapterRuntime(self.anyadapter_cfg)
             self.policy = None  # not used directly
@@ -250,6 +290,55 @@ class RealTimePolicyController:
             self.proprio_history_buf.append(np.zeros(self.n_proprio))
 
         self.record_video = record_video
+        self.debug_policy_stats = debug_policy_stats
+        self.debug_policy_stats_steps = int(debug_policy_stats_steps)
+        self._debug_policy_stats_count = 0
+        self._last_valid_mimic_full = None
+        self._last_mimic_warning_time = 0.0
+
+    def _read_mimic_reference(self):
+        """Read either supported Redis format without stopping the simulator."""
+        try:
+            raw = self.redis_client.get("action_mimic_g1")
+            mimic, age, _ = parse_mimic_msg(raw, expected_dim=MIMIC_OBS_DIM)
+            if age > REDIS_STALE_THRESHOLD:
+                raise ValueError(
+                    f"stale action_mimic_g1 message (age={age:.2f}s)"
+                )
+            self._last_valid_mimic_full = mimic.copy()
+            return mimic
+        except (redis.RedisError, ValueError, TypeError) as exc:
+            now = time.monotonic()
+            if now - self._last_mimic_warning_time >= 2.0:
+                source = (
+                    "last valid reference"
+                    if self._last_valid_mimic_full is not None
+                    else "default standing reference"
+                )
+                print(f"[Redis][WARN] {exc}; using {source}")
+                self._last_mimic_warning_time = now
+            if self._last_valid_mimic_full is not None:
+                return self._last_valid_mimic_full.copy()
+            return self.default_mimic_obs.astype(np.float32).copy()
+
+    def _print_policy_debug_stats(self, step, action_mimic, obs_proprio, raw_action):
+        if not self.debug_policy_stats or self._debug_policy_stats_count >= self.debug_policy_stats_steps:
+            return
+        ref_root = action_mimic[:8]
+        ref_dof = action_mimic[8:31]
+        actual_state = obs_proprio[:51]
+        print(
+            "[PolicyDebug] "
+            f"step={step} "
+            f"use_anyadapter={self.use_anyadapter} "
+            f"ref_root_absmax={np.max(np.abs(ref_root)):.4f} "
+            f"ref_dof_absmax={np.max(np.abs(ref_dof)):.4f} "
+            f"actual_state_absmax={np.max(np.abs(actual_state)):.4f} "
+            f"raw_action_absmax={np.max(np.abs(raw_action)):.4f} "
+            f"raw_action_mean={np.mean(raw_action):.4f} "
+            f"raw_action_std={np.std(raw_action):.4f}"
+        )
+        self._debug_policy_stats_count += 1
 
     def extract_data(self):
         qpos = self.data.qpos.astype(np.float32)
@@ -328,17 +417,11 @@ class RealTimePolicyController:
                     self.redis_client.set("state_body_g1", json.dumps(obs_proprio.tolist()))
                     self.redis_client.set("state_hand_g1", json.dumps(np.zeros(14).tolist()))
 
-                    # Try to get the latest mimic obs from Redis
-                    try:
-                        action_mimic_json = self.redis_client.get("action_mimic_g1")
-                        if action_mimic_json is not None:
-                            action_mimic_list = json.loads(action_mimic_json)
-                            action_mimic = np.array(action_mimic_list, dtype=np.float32)
-                            action_mimic, wrist_dof_pos = extract_mimic_obs_to_body_and_wrist(action_mimic)
-                        else:
-                            raise Exception("cannot get action mimic from redis")
-                    except:
-                        raise Exception("cannot get action mimic from redis")
+                    # Use a safe standing reference until a fresh Redis frame arrives.
+                    action_mimic_full = self._read_mimic_reference()
+                    action_mimic, wrist_dof_pos = extract_mimic_obs_to_body_and_wrist(
+                        action_mimic_full
+                    )
 
                     obs_full = np.concatenate([action_mimic, obs_proprio])
                     obs_hist = np.array(self.proprio_history_buf).flatten()
@@ -348,9 +431,24 @@ class RealTimePolicyController:
                     obs_tensor = torch.from_numpy(obs_buf).float().unsqueeze(0).to(self.device)
                     with torch.no_grad():
                         if self.use_anyadapter:
-                            raw_action = self.anyadapter_runtime.act(obs_buf)
+                            adapter_context = None
+                            if self.anyadapter_context_dim == 2:
+                                heading_error = np.arctan2(
+                                    np.sin(action_mimic[3] - rpy[2]),
+                                    np.cos(action_mimic[3] - rpy[2]),
+                                )
+                                adapter_context = np.array([
+                                    np.sin(heading_error),
+                                    1.0 - np.cos(heading_error),
+                                ], dtype=np.float32)
+                            raw_action = self.anyadapter_runtime.act(
+                                obs_buf,
+                                adapter_context=adapter_context,
+                            )
                         else:
                             raw_action = self.policy(obs_tensor).cpu().numpy().squeeze()
+
+                    self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
                     self.last_action = raw_action
                     raw_action = np.clip(raw_action, -10., 10.)
@@ -395,9 +493,12 @@ def main_low_level_sim(args):
     controller = RealTimePolicyController(
         xml_file=args.xml_file,
         policy_path=args.policy_path,
-        device='cuda',
+        device=args.device,
         record_video=args.record_video,
         use_anyadapter=args.use_anyadapter,
+        anyadapter_ema_alpha=args.anyadapter_ema_alpha,
+        debug_policy_stats=args.debug_policy_stats,
+        debug_policy_stats_steps=args.debug_policy_stats_steps,
     )
     controller.run()
 
@@ -411,9 +512,17 @@ if __name__ == "__main__":
     parser.add_argument("--policy_path",  help="Path to the policy",
                         default="../assets/twist_general_motion_tracker.pt"
                         )
+    parser.add_argument(
+        "--device",
+        default="cuda",
+        help="Torch policy device (for example cuda, cuda:0, or cpu)",
+    )
                         
     parser.add_argument("--record_video", action="store_true", help="Record a video")
     parser.add_argument("--use_anyadapter", action="store_true", help="Use AnyAdapter runtime wrapper")
+    parser.add_argument("--anyadapter_ema_alpha", type=float, default=0.0, help="EMA smoothing for AnyAdapter action output; use 0 for fair A/B/C comparison")
+    parser.add_argument("--debug_policy_stats", action="store_true", help="Print reference/proprio/action statistics for the first few policy steps")
+    parser.add_argument("--debug_policy_stats_steps", type=int, default=20, help="Number of policy steps to print when --debug_policy_stats is enabled")
     args = parser.parse_args()
 
     args.record_proprio = True

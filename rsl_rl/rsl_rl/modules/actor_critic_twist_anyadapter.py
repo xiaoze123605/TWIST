@@ -154,17 +154,25 @@ class ResidualAdapter(nn.Module):
         base_obs_dim: int,
         latent_dim: int,
         num_actions: int,
+        extra_input_dim: int = 0,
         hidden_dims: Sequence[int] = (128, 128),
         activation: str = "elu",
         delta_scale: float = 0.25,
     ) -> None:
         super().__init__()
         self.delta_scale = float(delta_scale)
-        self.net = mlp(base_obs_dim + latent_dim, hidden_dims, num_actions, activation)
+        self.extra_input_dim = int(extra_input_dim)
+        self.net = mlp(base_obs_dim + latent_dim + self.extra_input_dim, hidden_dims, num_actions, activation)
         zero_init_last_linear(self.net)
 
-    def forward(self, base_obs: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
-        return self.delta_scale * torch.tanh(self.net(torch.cat([base_obs, z], dim=-1)))
+    def forward(self, base_obs: torch.Tensor, z: torch.Tensor, extra: Optional[torch.Tensor] = None) -> torch.Tensor:
+        if self.extra_input_dim > 0:
+            if extra is None:
+                extra = base_obs.new_zeros(base_obs.shape[0], self.extra_input_dim)
+            x = torch.cat([base_obs, z, extra], dim=-1)
+        else:
+            x = torch.cat([base_obs, z], dim=-1)
+        return self.delta_scale * torch.tanh(self.net(x))
 
 
 class TwistAnyAdapterActorCritic(nn.Module):
@@ -203,6 +211,10 @@ class TwistAnyAdapterActorCritic(nn.Module):
         action_delta_scale: float = 0.25,
         adapter_gain: float = 1.0,
         default_ref_dof_pos: Optional[Sequence[float]] = None,
+        use_tracking_error_adapter_input: bool = False,
+        compact_adapter_input: bool = False,
+        history_policy_grad_scale: float = 0.0,
+        adapter_context_dim: int = 0,
         use_conv_history: bool = True,
         freeze_base: bool = True,
         **kwargs,
@@ -220,6 +232,7 @@ class TwistAnyAdapterActorCritic(nn.Module):
             raise ValueError("num_actions must be provided by the runner.")
         if num_critic_obs is None:
             raise ValueError("num_critic_obs or num_critic_observations must be provided by the runner.")
+        self.base_actor_jit_path = str(base_actor_jit_path)
         self.num_actions = num_actions
         self.base_obs_dim = int(base_obs_dim)
         self.history_len = int(history_len)
@@ -235,6 +248,15 @@ class TwistAnyAdapterActorCritic(nn.Module):
         self.fix_action_std = bool(fix_action_std)
         self.wm_target_indices = None if wm_target_indices is None else torch.as_tensor(wm_target_indices, dtype=torch.long)
         self.adapter_gain = float(adapter_gain)
+        self.use_tracking_error_adapter_input = bool(use_tracking_error_adapter_input)
+        self.compact_adapter_input = bool(compact_adapter_input)
+        self.history_policy_grad_scale = float(history_policy_grad_scale)
+        self.adapter_context_dim = int(adapter_context_dim)
+        if self.adapter_context_dim < 0:
+            raise ValueError("adapter_context_dim must be non-negative.")
+        if not 0.0 <= self.history_policy_grad_scale <= 1.0:
+            raise ValueError("history_policy_grad_scale must be in [0, 1].")
+        self.tracking_error_feature_dim = int(num_actions + 6) if self.use_tracking_error_adapter_input else 0
         if default_ref_dof_pos is None:
             default_ref_dof_pos = [0.0] * num_actions
         if len(default_ref_dof_pos) != num_actions:
@@ -255,10 +277,16 @@ class TwistAnyAdapterActorCritic(nn.Module):
             activation=activation,
             use_conv=use_conv_history,
         )
+        adapter_policy_input_dim = (
+            self.num_actions + self.hist_state_dim
+            if self.compact_adapter_input
+            else self.base_obs_dim
+        )
         self.adapter = ResidualAdapter(
-            base_obs_dim=self.base_obs_dim,
+            base_obs_dim=adapter_policy_input_dim,
             latent_dim=latent_dim,
             num_actions=num_actions,
+            extra_input_dim=self.tracking_error_feature_dim + self.adapter_context_dim,
             hidden_dims=adapter_hidden_dims,
             activation=activation,
             delta_scale=action_delta_scale,
@@ -308,8 +336,56 @@ class TwistAnyAdapterActorCritic(nn.Module):
         history = hist_flat.reshape(obs.shape[0], self.history_len, self.history_frame_dim)
         return base_obs, history
 
+    def _obs_slice_or_zeros(self, base_obs: torch.Tensor, start: int, width: int) -> torch.Tensor:
+        if base_obs.shape[1] >= start + width:
+            return base_obs[:, start : start + width]
+        out = base_obs.new_zeros(base_obs.shape[0], width)
+        if base_obs.shape[1] > start:
+            available = base_obs.shape[1] - start
+            out[:, :available] = base_obs[:, start:]
+        return out
+
+    def adapter_context(self, observations: torch.Tensor) -> Optional[torch.Tensor]:
+        if self.adapter_context_dim == 0:
+            return None
+        context_start = self.base_obs_dim + self.history_len * self.history_frame_dim
+        context_end = context_start + self.adapter_context_dim
+        if observations.shape[1] < context_end:
+            raise RuntimeError(
+                f"Observation has {observations.shape[1]} dims, but adapter context "
+                f"requires at least {context_end}."
+            )
+        return observations[:, context_start:context_end]
+
+    def tracking_error_features(self, base_obs: torch.Tensor) -> torch.Tensor:
+        """
+        Reference-aware adapter-only features.
+
+        These features are deliberately kept out of the history encoder and
+        world model so z remains a dynamics embedding rather than a motion
+        command embedding.  TWIST student obs layout used here:
+            1:3   reference roll/pitch
+            4:8   reference root velocity xyz + yaw velocity
+            8:31  reference dof position
+            34:36 actual roll/pitch
+            36:59 actual dof position offset from default pose
+        """
+        ref_vel = self._obs_slice_or_zeros(base_obs, 4, 4)
+        ref_roll_pitch = self._obs_slice_or_zeros(base_obs, 1, 2)
+        actual_roll_pitch = self._obs_slice_or_zeros(base_obs, 34, 2)
+        ref_dof_pos = self._obs_slice_or_zeros(base_obs, 8, self.num_actions)
+        dof_pos_delta = self._obs_slice_or_zeros(base_obs, 36, self.num_actions)
+        default_ref = self.default_ref_dof_pos.view(1, self.num_actions)
+        actual_dof_pos = default_ref + dof_pos_delta
+        return torch.cat([ref_vel, ref_roll_pitch - actual_roll_pitch, ref_dof_pos - actual_dof_pos], dim=-1)
+
     def encode_history_for_policy(self, history: torch.Tensor) -> torch.Tensor:
-        return self.history_encoder(history).detach()
+        z = self.history_encoder(history)
+        if self.history_policy_grad_scale <= 0.0:
+            return z.detach()
+        # Forward values stay unchanged while PPO gradients are scaled down.
+        z_detached = z.detach()
+        return z_detached + self.history_policy_grad_scale * (z - z_detached)
 
     def encode_history_for_world_model(self, history: torch.Tensor) -> torch.Tensor:
         return self.history_encoder(history)
@@ -319,16 +395,51 @@ class TwistAnyAdapterActorCritic(nn.Module):
         with torch.no_grad():
             return self.base_actor(base_obs)
 
-    def action_delta(self, observations: torch.Tensor, detach_history: bool = True) -> torch.Tensor:
+    def compact_adapter_features(
+        self,
+        base_obs: torch.Tensor,
+        base_action: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.wm_target_indices is None:
+            current_state = base_obs[:, 31 : 31 + self.hist_state_dim]
+        else:
+            idx = self.wm_target_indices.to(base_obs.device)
+            current_state = base_obs.index_select(dim=1, index=idx)
+        return torch.cat([base_action, current_state], dim=-1)
+
+    def action_delta(
+        self,
+        observations: torch.Tensor,
+        detach_history: bool = True,
+        base_action: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         base_obs, history = self.split_obs(observations)
         if detach_history:
             z = self.encode_history_for_policy(history)
         else:
             z = self.encode_history_for_world_model(history)
-        return self.adapter(base_obs, z)
+        adapter_obs = base_obs
+        if self.compact_adapter_input:
+            if base_action is None:
+                base_action = self.base_action(observations)
+            adapter_obs = self.compact_adapter_features(base_obs, base_action)
+        extra_parts = []
+        if self.use_tracking_error_adapter_input:
+            extra_parts.append(self.tracking_error_features(base_obs))
+        context = self.adapter_context(observations)
+        if context is not None:
+            extra_parts.append(context)
+        extra = torch.cat(extra_parts, dim=-1) if extra_parts else None
+        return self.adapter(adapter_obs, z, extra)
 
     def actor_mean(self, observations: torch.Tensor) -> torch.Tensor:
-        return self.base_action(observations) + self.adapter_gain * self.action_delta(observations, detach_history=True)
+        base_action = self.base_action(observations)
+        delta = self.action_delta(
+            observations,
+            detach_history=True,
+            base_action=base_action,
+        )
+        return base_action + self.adapter_gain * delta
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         return self.actor_mean(observations)
@@ -417,3 +528,8 @@ class TwistAnyAdapterActorCritic(nn.Module):
             "max_abs_delta_action": float(delta.detach().abs().max().cpu()),
             "mean_abs_delta_action": float(delta.detach().abs().mean().cpu()),
         }
+
+    def adapter_bias_regularization_loss(self, observations: torch.Tensor) -> torch.Tensor:
+        """Penalize persistent per-joint offsets while preserving phase corrections."""
+        delta = self.get_adapter_delta(observations)
+        return torch.mean(torch.mean(delta, dim=0) ** 2)

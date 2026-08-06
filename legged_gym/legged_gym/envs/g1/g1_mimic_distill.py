@@ -478,6 +478,30 @@ class G1MimicDistill(AnyAdapterHistoryMixin, HumanoidMimic):
     def _reward_ankle_action(self):
         return torch.norm(self.action_history_buf[:, -1, [4, 5, 10, 11]], dim=1)
 
+    def _in_place_reference_mask(self):
+        linear_threshold = float(
+            getattr(self.cfg.rewards, "in_place_ref_vel_threshold", 0.12)
+        )
+        yaw_threshold = float(
+            getattr(self.cfg.rewards, "in_place_ref_yaw_vel_threshold", 0.12)
+        )
+        return (
+            (torch.norm(self._ref_root_vel[:, :2], dim=1) < linear_threshold)
+            & (torch.abs(self._ref_root_ang_vel[:, 2]) < yaw_threshold)
+        )
+
+    def _reward_in_place_root_motion(self):
+        """Penalize uncommanded planar drift during in-place references."""
+        root_motion = torch.sum(torch.square(self.base_lin_vel[:, :2]), dim=1)
+        root_motion += 0.25 * torch.square(self.base_ang_vel[:, 2])
+        return root_motion * self._in_place_reference_mask().float()
+
+    def _reward_in_place_feet_motion(self):
+        """Penalize support switching and foot shuffling for in-place motions."""
+        feet_velocity = self.rigid_body_states[:, self.feet_indices, 7:10]
+        feet_motion = torch.sum(torch.square(feet_velocity), dim=(1, 2))
+        return feet_motion * self._in_place_reference_mask().float()
+
 
 class G1MimicRecorder(G1MimicDistill):
     """Environment subclass that records physically-consistent trajectories from teacher rollouts."""

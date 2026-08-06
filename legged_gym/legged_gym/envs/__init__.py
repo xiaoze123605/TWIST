@@ -43,6 +43,10 @@ from .g1.g1_mimic_distill_config import G1MimicStuCleanedCfg, G1MimicStuCleanedC
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterCfg, G1MimicStuAnyAdapterCfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV2Cfg, G1MimicStuAnyAdapterV2CfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterSafeCfg, G1MimicStuAnyAdapterSafeCfgPPO
+from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV3Cfg, G1MimicStuAnyAdapterV3CfgPPO
+from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV4Cfg, G1MimicStuAnyAdapterV4CfgPPO
+from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV5Cfg, G1MimicStuAnyAdapterV5CfgPPO
+from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV6Cfg, G1MimicStuAnyAdapterV6CfgPPO
 
 from legged_gym.gym_utils.task_registry import task_registry
 
@@ -59,3 +63,7 @@ task_registry.register("g1_stu_rl_cleaned", G1MimicDistill, G1MimicStuCleanedCfg
 task_registry.register("g1_stu_anyadapter", G1MimicDistill, G1MimicStuAnyAdapterCfg(), G1MimicStuAnyAdapterCfgPPO())
 task_registry.register("g1_stu_anyadapter_v2", G1MimicDistill, G1MimicStuAnyAdapterV2Cfg(), G1MimicStuAnyAdapterV2CfgPPO())
 task_registry.register("g1_stu_anyadapter_safe", G1MimicDistill, G1MimicStuAnyAdapterSafeCfg(), G1MimicStuAnyAdapterSafeCfgPPO())
+task_registry.register("g1_stu_anyadapter_v3", G1MimicDistill, G1MimicStuAnyAdapterV3Cfg(), G1MimicStuAnyAdapterV3CfgPPO())
+task_registry.register("g1_stu_anyadapter_v4", G1MimicDistill, G1MimicStuAnyAdapterV4Cfg(), G1MimicStuAnyAdapterV4CfgPPO())
+task_registry.register("g1_stu_anyadapter_v5", G1MimicDistill, G1MimicStuAnyAdapterV5Cfg(), G1MimicStuAnyAdapterV5CfgPPO())
+task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdapterV6Cfg(), G1MimicStuAnyAdapterV6CfgPPO())

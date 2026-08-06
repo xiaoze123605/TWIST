@@ -31,5 +31,6 @@
 from .ppo_rma import PPORMA
 from .ppo import PPO
 from .ppo_anyadapter import PPOAnyAdapter
+from .ppo_any2track import PPOAny2Track
 from .dagger import DAgger
 from .dagger_ppo import DaggerPPO

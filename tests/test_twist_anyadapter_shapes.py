@@ -79,6 +79,103 @@ def main() -> None:
         assert world_pred.shape[0] == 4, world_pred.shape
         assert abs(adapter_delta.mean().item()) < 1e-6, adapter_delta.mean().item()
 
+        tracking_actor_critic = TwistAnyAdapterActorCritic(
+            num_prop=base_obs_dim,
+            num_critic_obs=total_obs_dim,
+            num_priv_latent=0,
+            num_hist=history_len,
+            num_actions=num_actions,
+            base_actor_jit_path=base_actor_jit_path,
+            base_obs_dim=base_obs_dim,
+            history_len=history_len,
+            history_frame_dim=history_frame_dim,
+            hist_state_dim=hist_state_dim,
+            latent_dim=16,
+            adapter_hidden_dims=[32, 32],
+            critic_hidden_dims=[64, 32],
+            world_model_hidden_dims=[64, 32],
+            action_delta_scale=0.05,
+            use_tracking_error_adapter_input=True,
+            use_conv_history=True,
+            freeze_base=True,
+        )
+        tracking_actor_critic.eval()
+        with torch.no_grad():
+            tracking_action = tracking_actor_critic.act_inference(obs)
+            tracking_delta = tracking_actor_critic.get_adapter_delta(obs)
+        assert list(tracking_action.shape) == [4, num_actions], tracking_action.shape
+        assert list(tracking_delta.shape) == [4, num_actions], tracking_delta.shape
+        assert abs(tracking_delta.mean().item()) < 1e-6, tracking_delta.mean().item()
+
+        compact_actor_critic = TwistAnyAdapterActorCritic(
+            num_prop=base_obs_dim,
+            num_critic_obs=total_obs_dim,
+            num_priv_latent=0,
+            num_hist=history_len,
+            num_actions=num_actions,
+            base_actor_jit_path=base_actor_jit_path,
+            base_obs_dim=base_obs_dim,
+            history_len=history_len,
+            history_frame_dim=history_frame_dim,
+            hist_state_dim=hist_state_dim,
+            latent_dim=16,
+            adapter_hidden_dims=[32, 32],
+            critic_hidden_dims=[64, 32],
+            world_model_hidden_dims=[64, 32],
+            action_delta_scale=0.10,
+            use_tracking_error_adapter_input=True,
+            compact_adapter_input=True,
+            history_policy_grad_scale=0.10,
+            use_conv_history=True,
+            freeze_base=True,
+        )
+        compact_actor_critic.eval()
+        with torch.no_grad():
+            compact_action = compact_actor_critic.act_inference(obs)
+            compact_delta = compact_actor_critic.get_adapter_delta(obs)
+        assert list(compact_action.shape) == [4, num_actions], compact_action.shape
+        assert list(compact_delta.shape) == [4, num_actions], compact_delta.shape
+        expected_adapter_input = num_actions + hist_state_dim + 16 + num_actions + 6
+        assert compact_actor_critic.adapter.net[0].in_features == expected_adapter_input
+        assert abs(compact_delta.mean().item()) < 1e-6, compact_delta.mean().item()
+
+        heading_obs = torch.randn(4, total_obs_dim + 2)
+        heading_actor_critic = TwistAnyAdapterActorCritic(
+            num_prop=base_obs_dim,
+            num_critic_obs=total_obs_dim + 2,
+            num_priv_latent=0,
+            num_hist=history_len,
+            num_actions=num_actions,
+            base_actor_jit_path=base_actor_jit_path,
+            base_obs_dim=base_obs_dim,
+            history_len=history_len,
+            history_frame_dim=history_frame_dim,
+            hist_state_dim=hist_state_dim,
+            latent_dim=16,
+            adapter_hidden_dims=[32, 32],
+            critic_hidden_dims=[64, 32],
+            world_model_hidden_dims=[64, 32],
+            action_delta_scale=0.05,
+            use_tracking_error_adapter_input=True,
+            compact_adapter_input=True,
+            history_policy_grad_scale=0.10,
+            adapter_context_dim=2,
+            use_conv_history=True,
+            freeze_base=True,
+        )
+        heading_actor_critic.eval()
+        with torch.no_grad():
+            heading_action = heading_actor_critic.act_inference(heading_obs)
+            heading_delta = heading_actor_critic.get_adapter_delta(heading_obs)
+            heading_bias_loss = heading_actor_critic.adapter_bias_regularization_loss(
+                heading_obs
+            )
+        assert list(heading_action.shape) == [4, num_actions], heading_action.shape
+        assert list(heading_delta.shape) == [4, num_actions], heading_delta.shape
+        assert heading_bias_loss.ndim == 0
+        assert heading_actor_critic.adapter.net[0].in_features == expected_adapter_input + 2
+        assert abs(heading_delta.mean().item()) < 1e-6, heading_delta.mean().item()
+
     print("twist anyadapter shape test ok")
 
 

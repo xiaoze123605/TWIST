@@ -1383,7 +1383,7 @@ def main():
     parser = argparse.ArgumentParser()
     here = os.path.dirname(os.path.abspath(__file__))
     parser.add_argument("--host", default="192.168.3.103", help="OptiTrack Server Address")
-    parser.add_argument("--client_ip", default="192.168.3.137", help="Local client IP")
+    parser.add_argument("--client_ip", default="192.168.3.176", help="Local client IP")
     parser.add_argument("--use_multicast", type=bool, default=True)
     parser.add_argument("--robot", default="g1", choices=["g1", "t1"])
     parser.add_argument("--vis", action="store_true")

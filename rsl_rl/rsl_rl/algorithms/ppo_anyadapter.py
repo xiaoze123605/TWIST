@@ -27,6 +27,7 @@ class PPOAnyAdapter(PPO):
         *args,
         world_model_loss_coef: float = 0.1,
         adapter_reg_coef: float = 1e-3,
+        adapter_bias_reg_coef: float = 0.0,
         stand_anchor_coef: float = 1.0,
         synthetic_stand_anchor_coef: float = 0.0,
         synthetic_stand_root_height: float = 0.793,
@@ -34,11 +35,13 @@ class PPOAnyAdapter(PPO):
         stand_dof_threshold: float = 0.15,
         world_model_loss_type: str = "smooth_l1",
         weight_decay: float = 0.0,
+        joint_encoder_optimization: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.world_model_loss_coef = float(world_model_loss_coef)
         self.adapter_reg_coef = float(adapter_reg_coef)
+        self.adapter_bias_reg_coef = float(adapter_bias_reg_coef)
         self.stand_anchor_coef = float(stand_anchor_coef)
         self.synthetic_stand_anchor_coef = float(synthetic_stand_anchor_coef)
         self.synthetic_stand_root_height = float(synthetic_stand_root_height)
@@ -46,6 +49,7 @@ class PPOAnyAdapter(PPO):
         self.stand_dof_threshold = float(stand_dof_threshold)
         self.world_model_loss_type = world_model_loss_type
         self.weight_decay = float(weight_decay)
+        self.joint_encoder_optimization = bool(joint_encoder_optimization)
         self.skip_dagger_update = True
         self.requires_next_observations = True
 
@@ -59,12 +63,16 @@ class PPOAnyAdapter(PPO):
         self.wm_params += [p for p in self.actor_critic.history_encoder.parameters() if p.requires_grad]
         self.wm_params += [p for p in self.actor_critic.world_model.parameters() if p.requires_grad]
 
+        if self.joint_encoder_optimization:
+            self.ppo_params += self.wm_params
+
         self.ppo_optimizer = torch.optim.Adam(
             self.ppo_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
-        self.wm_optimizer = torch.optim.Adam(self.wm_params, lr=self.learning_rate)
+        if not self.joint_encoder_optimization:
+            self.wm_optimizer = torch.optim.Adam(self.wm_params, lr=self.learning_rate)
         self.optimizer = self.ppo_optimizer
         self.anyadapter_metrics = {}
         self._wm_target_warning_printed = False
@@ -189,6 +197,7 @@ class PPOAnyAdapter(PPO):
         mean_surrogate_loss = 0.0
         mean_wm_loss = 0.0
         mean_adapter_reg_loss = 0.0
+        mean_adapter_bias_reg_loss = 0.0
         mean_adapter_delta_l2 = 0.0
         mean_stand_anchor_loss = 0.0
         mean_synthetic_stand_anchor_loss = 0.0
@@ -270,6 +279,7 @@ class PPOAnyAdapter(PPO):
 
             wm_loss = obs_batch.new_tensor(0.0)
             adapter_reg_loss = obs_batch.new_tensor(0.0)
+            adapter_bias_reg_loss = obs_batch.new_tensor(0.0)
             stand_anchor_loss = obs_batch.new_tensor(0.0)
             synthetic_stand_anchor_loss = obs_batch.new_tensor(0.0)
             stand_sample_ratio = obs_batch.new_tensor(0.0)
@@ -279,6 +289,12 @@ class PPOAnyAdapter(PPO):
                 mean_adapter_delta_l2 += adapter_info.get("adapter_delta_l2", adapter_reg_loss.item())
                 mean_max_abs_delta_action += adapter_info.get("max_abs_delta_action", 0.0)
                 mean_mean_abs_delta_action += adapter_info.get("mean_abs_delta_action", 0.0)
+            if (
+                hasattr(self.actor_critic, "adapter_bias_regularization_loss")
+                and self.adapter_bias_reg_coef > 0.0
+            ):
+                adapter_bias_reg_loss = self.actor_critic.adapter_bias_regularization_loss(obs_batch)
+                loss = loss + self.adapter_bias_reg_coef * adapter_bias_reg_loss
             if self.stand_anchor_coef > 0.0:
                 stand_anchor_loss, stand_sample_ratio = self._stand_anchor_loss_from_batch(obs_batch)
                 loss = loss + self.stand_anchor_coef * stand_anchor_loss
@@ -286,16 +302,36 @@ class PPOAnyAdapter(PPO):
                 synthetic_stand_anchor_loss = self._synthetic_stand_anchor_loss_from_batch(obs_batch)
                 loss = loss + self.synthetic_stand_anchor_coef * synthetic_stand_anchor_loss
 
+            wm_target_available = self._has_world_model_target()
+            if self.joint_encoder_optimization and self.world_model_loss_coef > 0.0:
+                if hasattr(self.actor_critic, "predict_world_model") and wm_target_available:
+                    wm_loss = self._world_model_loss_from_batch(
+                        obs_batch,
+                        actions_batch,
+                        next_obs_batch,
+                        dones_batch,
+                        next_obs_available_batch,
+                    )
+                    loss = loss + self.world_model_loss_coef * wm_loss
+                else:
+                    wm_loss_skipped = True
+                    self._warn_missing_world_model_target_once()
+
             self.ppo_optimizer.zero_grad()
-            self.wm_optimizer.zero_grad()
+            if hasattr(self, "wm_optimizer"):
+                self.wm_optimizer.zero_grad()
             loss.backward()
             history_encoder_ppo_grad_norm = self._grad_norm(self.actor_critic.history_encoder.parameters())
             adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
             nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
             self.ppo_optimizer.step()
 
-            if hasattr(self.actor_critic, "predict_world_model") and self.world_model_loss_coef > 0.0:
-                if self._has_world_model_target():
+            if (
+                not self.joint_encoder_optimization
+                and hasattr(self.actor_critic, "predict_world_model")
+                and self.world_model_loss_coef > 0.0
+            ):
+                if wm_target_available:
                     self.wm_optimizer.zero_grad()
                     wm_loss = self._world_model_loss_from_batch(
                         obs_batch,
@@ -312,6 +348,8 @@ class PPOAnyAdapter(PPO):
                     history_encoder_wm_grad_norm = 0.0
                     wm_loss_skipped = True
                     self._warn_missing_world_model_target_once()
+            elif self.joint_encoder_optimization:
+                history_encoder_wm_grad_norm = history_encoder_ppo_grad_norm
             else:
                 history_encoder_wm_grad_norm = 0.0
 
@@ -319,6 +357,7 @@ class PPOAnyAdapter(PPO):
             mean_surrogate_loss += surrogate_loss.item()
             mean_wm_loss += wm_loss.item()
             mean_adapter_reg_loss += adapter_reg_loss.item()
+            mean_adapter_bias_reg_loss += adapter_bias_reg_loss.item()
             mean_stand_anchor_loss += stand_anchor_loss.item()
             mean_synthetic_stand_anchor_loss += synthetic_stand_anchor_loss.item()
             mean_stand_sample_ratio += stand_sample_ratio.item()
@@ -338,6 +377,7 @@ class PPOAnyAdapter(PPO):
             "world_model_loss_skipped": float(wm_loss_skipped),
             "adapter_delta_l2": mean_adapter_delta_l2 / num_updates,
             "adapter_reg_loss": mean_adapter_reg_loss / num_updates,
+            "adapter_bias_reg_loss": mean_adapter_bias_reg_loss / num_updates,
             "stand_anchor_loss": mean_stand_anchor_loss / num_updates,
             "synthetic_stand_anchor_loss": mean_synthetic_stand_anchor_loss / num_updates,
             "stand_sample_ratio": mean_stand_sample_ratio / num_updates,

@@ -1,30 +1,52 @@
 # TWIST G1 real-robot deployment
 
-The supported low-level entry point is:
+The original TWIST low-level entry point for a base policy is:
 
 ```bash
-python server_low_level_g1_real_v2.py --policy_path PATH/TO/POLICY.pt --net NETWORK_INTERFACE
+python server_low_level_g1_real.py --policy_path PATH/TO/BASE_POLICY.pt --net NETWORK_INTERFACE
 ```
 
-`server_low_level_g1_real.py` is deprecated and only forwards to v2.
-`server_motion_optitrack_v2 (legacy).py` is retained for reference and should
-not be used for a new deployment.
+The separate AnyAdapter V4 entry point is:
 
-The v2 controller keeps the trained policy contract unchanged:
+```bash
+python server_low_level_g1_real_anyadapter.py \
+  --policy_path PATH/TO/ANYADAPTER_V4_POLICY.pt \
+  --net NETWORK_INTERFACE \
+  --anyadapter-ema-alpha 0.0
+```
+
+`server_low_level_g1_real.py` is unchanged and does not forward to V2.
+`server_low_level_g1_real_v2.py` is an obsolete experimental deployment path
+and is not used by the AnyAdapter controller.
+
+The AnyAdapter controller keeps the original real-controller behavior and adds
+only the adapter observation wrapper:
 
 - control period: `0.02 s` (50 Hz)
 - action scale: `0.5`
 - history length: `10`
-- policy input: `1186` = current mimic 31 + current frame 105 +
-  historical frames `10 * 105`
+- base TWIST policy input: `1155` = current frame `105` + historical frames
+  `10 * 105`
+- AnyAdapter V4 policy input: `2635` = base TWIST `1155` + adapter history
+  `20 * 74`
+- each AnyAdapter history frame contains the selected 51-D physical state
+  (`base_ang_vel`, roll/pitch, joint position offsets, joint velocities) and
+  the previous 23-D policy action
 - policy output: 23 joints in leg-12 + waist-3 + arm-8 order
 - Redis mimic input: 33 values; wrist roll is removed before the 31-D policy input
 
-The controller asserts the 1186-D observation contract and exits if a supplied
-JIT has a different input contract. It never silently reshapes policy input.
-The repository's bundled `assets/twist_general_motion_tracker.pt` currently
-accepts 1155 values and is therefore rejected by this 1186-D deployment path;
-export the intended student checkpoint as an 1186-input TorchScript model.
+The AnyAdapter world model is not run during deployment. Only the exported
+base actor, history encoder, and residual adapter run in the control loop.
+Unsupported JIT contracts exit before DDS or motor communication begins.
+
+Validate an exported V4 policy without Unitree communication:
+
+```bash
+python server_low_level_g1_real_anyadapter.py \
+  --policy_path PATH/TO/ANYADAPTER_V4_POLICY.pt \
+  --device cpu \
+  --probe-only
+```
 
 Start Redis before running a sender or controller:
 
@@ -32,7 +54,12 @@ Start Redis before running a sender or controller:
 redis-server
 ```
 
-## 1. Stand test
+## Legacy V2 notes
+
+The remaining V2 stand-test, replay, and recovery notes below are retained for
+reference only. They do not describe the current AnyAdapter deployment entry.
+
+### 1. Stand test
 
 Use this as the first powered test. It does not need GMR or Redis mimic data and
 does not run the policy.
@@ -71,6 +98,10 @@ python server_low_level_g1_real_v2.py \
   --policy_path PATH/TO/POLICY.pt \
   --net NETWORK_INTERFACE
 ```
+
+The deprecated `server_low_level_g1_real.py` command accepts the same arguments
+and forwards to v2. AnyAdapter detection is automatic; no enable flag is
+required. `--anyadapter-ema-alpha 0.0` disables optional output smoothing.
 
 The controller can also replay a recorded `[T, 33]` NumPy array without a
 Redis sender:

@@ -18,6 +18,26 @@ from data_utils.rot_utils import euler_from_quaternion, quat_rotate_inverse, qua
 
 from data_utils.params import DEFAULT_MIMIC_OBS, DEFAULT_ACTION_HAND
 
+
+def _wrap_to_pi(angle):
+    return torch.atan2(torch.sin(angle), torch.cos(angle))
+
+
+def _quat_xyzw_from_euler(roll, pitch, yaw):
+    half_roll = 0.5 * roll
+    half_pitch = 0.5 * pitch
+    half_yaw = 0.5 * yaw
+    cr, sr = torch.cos(half_roll), torch.sin(half_roll)
+    cp, sp = torch.cos(half_pitch), torch.sin(half_pitch)
+    cy, sy = torch.cos(half_yaw), torch.sin(half_yaw)
+    return torch.stack((
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    ), dim=-1)
+
+
 # ---------------------------------------------------------------------
 # A small helper to replicate "mimic obs" logic from your code
 # ---------------------------------------------------------------------
@@ -28,11 +48,13 @@ def build_mimic_obs(
     tar_obs_steps,
     robot_type: str = "g1",
     motion_speed: float = 1.0,
+    heading_offset: float = 0.0,
+    hip_yaw_scale: float = 1.0,
 ):
     """
     Build the mimic_obs at time-step t_step, referencing the code in MimicRunner.
     """
-    device = torch.device("cuda")
+    device = torch.device(motion_lib._device)
     # Build times
     motion_times = torch.tensor([t_step * control_dt * motion_speed], device=device).unsqueeze(-1)
     obs_motion_times = tar_obs_steps * control_dt * motion_speed + motion_times
@@ -43,21 +65,27 @@ def build_mimic_obs(
     
     # Retrieve motion frames
     root_pos, root_rot, root_vel, root_ang_vel, dof_pos, _, body_pos = motion_lib.calc_motion_frame(motion_ids, obs_motion_times)
+    source_root_rot = root_rot
 
     # Convert to euler (roll, pitch, yaw)
     roll, pitch, yaw = euler_from_quaternion(root_rot)
+    yaw = _wrap_to_pi(yaw - float(heading_offset))
+    display_root_rot = _quat_xyzw_from_euler(roll, pitch, yaw)
     roll = roll.reshape(1, -1, 1)
     pitch = pitch.reshape(1, -1, 1)
     yaw = yaw.reshape(1, -1, 1)
 
     # Transform velocities to root frame
-    root_vel = quat_rotate_inverse_torch(root_rot, root_vel).reshape(1, -1, 3)
-    root_ang_vel = quat_rotate_inverse_torch(root_rot, root_ang_vel).reshape(1, -1, 3)
+    root_vel = quat_rotate_inverse_torch(source_root_rot, root_vel).reshape(1, -1, 3)
+    root_ang_vel = quat_rotate_inverse_torch(source_root_rot, root_ang_vel).reshape(1, -1, 3)
     root_vel = root_vel * motion_speed
     root_ang_vel = root_ang_vel * motion_speed
 
     root_pos = root_pos.reshape(1, -1, 3)
     dof_pos = dof_pos.reshape(1, -1, dof_pos.shape[-1])
+    if robot_type == "g1" and hip_yaw_scale != 1.0:
+        dof_pos = dof_pos.clone()
+        dof_pos[..., [2, 8]] *= float(hip_yaw_scale)
     
     if robot_type == "g1":
         dof_pos_with_wrist = torch.zeros(25, device=device).reshape(1, 1, 25)
@@ -76,7 +104,7 @@ def build_mimic_obs(
     mimic_obs_buf = mimic_obs_buf.reshape(1, -1)
     
     return mimic_obs_buf.detach().cpu().numpy().squeeze(), root_pos.detach().cpu().numpy().squeeze(), \
-        root_rot.detach().cpu().numpy().squeeze(), dof_pos.detach().cpu().numpy().squeeze(), \
+        display_root_rot.detach().cpu().numpy().squeeze(), dof_pos.detach().cpu().numpy().squeeze(), \
             root_vel.detach().cpu().numpy().squeeze(), root_ang_vel.detach().cpu().numpy().squeeze()
 
 
@@ -85,6 +113,8 @@ def main(args, xml_file, robot_base):
         raise ValueError("--motion-speed must be > 0")
     if not (0.0 <= args.motion_scale <= 1.0):
         raise ValueError("--motion-scale must be in [0, 1]")
+    if not (0.0 <= args.hip_yaw_scale <= 1.0):
+        raise ValueError("--hip-yaw-scale must be in [0, 1]")
 
     if args.vis:
         sim_model = mujoco.MjModel.from_xml_path(xml_file)
@@ -111,8 +141,49 @@ def main(args, xml_file, robot_base):
     redis_client = redis.Redis(host="localhost", port=6379, db=0)
 
     # 2. Load motion library
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = (
+        "cuda" if torch.cuda.is_available() else "cpu"
+    ) if args.device == "auto" else args.device
+    print(f"[Motion Server] Torch device: {device}")
     motion_lib = MotionLib(args.motion_file, device=device)
+
+    initial_motion_id = torch.zeros(1, dtype=torch.long, device=device)
+    initial_motion_time = torch.zeros(1, dtype=torch.float, device=device)
+    initial_root_pos, initial_root_rot, *_ = motion_lib.calc_motion_frame(
+        initial_motion_id,
+        initial_motion_time,
+    )
+    _, _, initial_yaw = euler_from_quaternion(initial_root_rot)
+    heading_offset = 0.0 if args.keep_absolute_heading else float(initial_yaw.item())
+    initial_root_xy = initial_root_pos[0, :2].detach().cpu().numpy()
+    heading_cos = np.cos(-heading_offset)
+    heading_sin = np.sin(-heading_offset)
+    heading_rotation = np.array([
+        [heading_cos, -heading_sin],
+        [heading_sin, heading_cos],
+    ])
+    heading_mode = "absolute" if args.keep_absolute_heading else "relative-to-first-frame"
+    print(
+        f"[Motion Server] Heading mode: {heading_mode}; "
+        f"source initial yaw={float(initial_yaw.item()):.4f} rad"
+    )
+    motion_length = motion_lib.get_motion_length(initial_motion_id)
+    final_time = torch.clamp(motion_length - 1e-4, min=0.0)
+    final_root_pos, final_root_rot, *_ = motion_lib.calc_motion_frame(
+        initial_motion_id,
+        final_time,
+    )
+    _, _, final_yaw = euler_from_quaternion(final_root_rot)
+    relative_yaw = _wrap_to_pi(final_yaw - initial_yaw)
+    canonical_displacement = heading_rotation @ (
+        final_root_pos[0, :2].detach().cpu().numpy() - initial_root_xy
+    )
+    print(
+        "[Motion Server] Motion summary: "
+        f"relative_yaw={float(relative_yaw.item()):.4f} rad, "
+        f"canonical_xy=({canonical_displacement[0]:.3f}, "
+        f"{canonical_displacement[1]:.3f}) m"
+    )
     
     # 3. Prepare the steps array
     tar_obs_steps = [int(x.strip()) for x in args.steps.split(",")]
@@ -155,6 +226,8 @@ def main(args, xml_file, robot_base):
                     tar_obs_steps=tar_obs_steps_tensor,
                     robot_type=args.robot,
                     motion_speed=args.motion_speed,
+                    heading_offset=heading_offset,
+                    hip_yaw_scale=args.hip_yaw_scale,
                 )
                 mimic_obs = DEFAULT_MIMIC_OBS[args.robot] + args.motion_scale * (
                     mimic_obs - DEFAULT_MIMIC_OBS[args.robot]
@@ -178,6 +251,9 @@ def main(args, xml_file, robot_base):
                 global_frame_id += 1
 
                 if args.vis:
+                    if not args.keep_absolute_heading:
+                        root_pos = root_pos.copy()
+                        root_pos[:2] = heading_rotation @ (root_pos[:2] - initial_root_xy)
                     sim_data.qpos[:3] = root_pos
                     # filp rot
                     # root_rot = root_rot[[1,2,3,0]]
@@ -235,6 +311,11 @@ if __name__ == "__main__":
     parser.add_argument("--motion_file", help="Path to your *.pkl motion file for MotionLib", 
                         default="/home/yanjieze/projects/g1_wbc/humanoid-motion-imitation/track_dataset/twist_motion_dataset/mocap/0.pkl")
     parser.add_argument("--robot", type=str, default="g1", choices=["g1"])
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Torch device for MotionLib: auto, cpu, cuda, or cuda:0",
+    )
     parser.add_argument("--steps", type=str,
                         default="1",
                         help="Comma-separated steps for future frames (tar_obs_steps)")
@@ -246,6 +327,17 @@ if __name__ == "__main__":
                         help="Motion playback speed. Use 0.5 for half-speed real deployment.")
     parser.add_argument("--motion-scale", type=float, default=1.0,
                         help="Scale mimic obs around default pose. Use 0.6 to reduce motion amplitude.")
+    parser.add_argument(
+        "--hip-yaw-scale",
+        type=float,
+        default=1.0,
+        help="Scale left/right hip-yaw references; try 0.5 to reduce out-toeing.",
+    )
+    parser.add_argument(
+        "--keep-absolute-heading",
+        action="store_true",
+        help="Publish the dataset's absolute yaw instead of making the first frame yaw zero.",
+    )
     parser.add_argument("--vis", action="store_true", help="Visualize the motion")
     args = parser.parse_args()
 

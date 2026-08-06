@@ -40,6 +40,17 @@ class AnyAdapterHistoryMixin:
             self.anyadapter_state_indices = torch.as_tensor(state_indices, device=self.device, dtype=torch.long)
         self.anyadapter_state_dim = int(self.anyadapter_state_indices.numel())
         self.anyadapter_frame_dim = self.anyadapter_state_dim + self.num_actions
+        self.anyadapter_context_dim = int(
+            getattr(self.cfg.env, "anyadapter_context_dim", 0)
+        )
+        self.anyadapter_fill_history_on_reset = bool(
+            getattr(self.cfg.env, "anyadapter_fill_history_on_reset", False)
+        )
+        if self.anyadapter_context_dim not in (0, 2):
+            raise ValueError(
+                "anyadapter_context_dim currently supports 0 or 2 "
+                "([sin(heading_error), 1-cos(heading_error)])."
+            )
         expected_state_dim = getattr(self.cfg.env, "anyadapter_hist_state_dim", None)
         expected_frame_dim = getattr(self.cfg.env, "anyadapter_history_frame_dim", None)
         if expected_state_dim is not None and self.anyadapter_state_dim != int(expected_state_dim):
@@ -66,7 +77,11 @@ class AnyAdapterHistoryMixin:
             dtype=torch.float32,
         )
         self.base_num_obs_before_anyadapter = self.num_obs
-        self.num_obs = self.base_num_obs_before_anyadapter + self.anyadapter_history_len * self.anyadapter_frame_dim
+        self.num_obs = (
+            self.base_num_obs_before_anyadapter
+            + self.anyadapter_history_len * self.anyadapter_frame_dim
+            + self.anyadapter_context_dim
+        )
         self.cfg.env.num_observations = self.num_obs
         if self.obs_buf.shape[1] != self.num_obs:
             self.obs_buf = torch.zeros(
@@ -82,6 +97,19 @@ class AnyAdapterHistoryMixin:
         self.anyadapter_history[env_ids] = 0.0
         self.anyadapter_prev_actions[env_ids] = 0.0
 
+    def _anyadapter_context(self, base_obs: torch.Tensor) -> torch.Tensor:
+        if self.anyadapter_context_dim == 0:
+            return base_obs.new_zeros(self.num_envs, 0)
+        ref_yaw = base_obs[:, 3]
+        heading_error = torch.atan2(
+            torch.sin(ref_yaw - self.yaw),
+            torch.cos(ref_yaw - self.yaw),
+        )
+        return torch.stack(
+            [torch.sin(heading_error), 1.0 - torch.cos(heading_error)],
+            dim=-1,
+        )
+
     def _append_anyadapter_history(self, base_obs: torch.Tensor, current_actions=None) -> torch.Tensor:
         """Append flattened history to base observations and update buffer.
 
@@ -94,7 +122,21 @@ class AnyAdapterHistoryMixin:
             current_actions = getattr(self, "actions", self.anyadapter_prev_actions)
         dyn_state = base_obs.index_select(dim=1, index=self.anyadapter_state_indices)
         new_frame = torch.cat([dyn_state, current_actions.detach()], dim=-1)
-        self.anyadapter_history = torch.roll(self.anyadapter_history, shifts=-1, dims=1)
-        self.anyadapter_history[:, -1, :] = new_frame
+        rolled_history = torch.roll(self.anyadapter_history, shifts=-1, dims=1)
+        rolled_history[:, -1, :] = new_frame
+        if self.anyadapter_fill_history_on_reset:
+            reset_mask = (self.episode_length_buf <= 1).view(-1, 1, 1)
+            initial_history = new_frame.unsqueeze(1).expand(
+                -1, self.anyadapter_history_len, -1
+            )
+            self.anyadapter_history = torch.where(
+                reset_mask, initial_history, rolled_history
+            )
+        else:
+            self.anyadapter_history = rolled_history
         self.anyadapter_prev_actions = current_actions.detach().clone()
-        return torch.cat([base_obs, self.anyadapter_history.reshape(self.num_envs, -1)], dim=-1)
+        return torch.cat([
+            base_obs,
+            self.anyadapter_history.reshape(self.num_envs, -1),
+            self._anyadapter_context(base_obs),
+        ], dim=-1)

@@ -59,6 +59,12 @@ deploy_real/server_motion_optitrack_gmr_stable.py
 *.pth
 legged_gym/logs/
 
+# Lock files
+*.lock
+
+# Deploy logs
+deploy_real/logs/
+
 # External patches / notes
 _external_patches/
 patch_notes/

@@ -655,5 +655,11 @@ class HumanoidMimic(HumanoidChar):
         air_time = air_time.clamp(max=0.)
         self.feet_air_time *= ~self.contact_filt
         rew_airtime = air_time.sum(dim=1)
-        rew_airtime *= torch.norm(self._ref_root_vel[:, :2], dim=1) > 0.05
+        locomotion_threshold = float(
+            getattr(self.cfg.rewards, "locomotion_ref_vel_threshold", 0.05)
+        )
+        rew_airtime *= (
+            torch.norm(self._ref_root_vel[:, :2], dim=1)
+            > locomotion_threshold
+        )
         return rew_airtime

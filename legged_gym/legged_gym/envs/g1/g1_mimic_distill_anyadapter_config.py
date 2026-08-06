@@ -60,7 +60,7 @@ class G1MimicStuAnyAdapterCfgPPO(G1MimicPrivCfgPPO):
 
     class policy(G1MimicPrivCfgPPO.policy):
         # Must point to the frozen exported TWIST student JIT actor.
-        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0721_twist_rlbcstu/traced/0721_twist_rlbcstu-23500-jit.pt"
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
 
         base_obs_dim = 1155
         history_len = 20
@@ -128,7 +128,7 @@ class G1MimicStuAnyAdapterV2CfgPPO(G1MimicPrivCfgPPO):
 
     class policy(G1MimicPrivCfgPPO.policy):
         # Must point to the frozen exported TWIST student JIT actor.
-        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0721_twist_rlbcstu/traced/0721_twist_rlbcstu-23500-jit.pt"
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
 
         base_obs_dim = 1155
         history_len = 20
@@ -173,7 +173,7 @@ class G1MimicStuAnyAdapterSafeCfgPPO(G1MimicPrivCfgPPO):
 
     class policy(G1MimicPrivCfgPPO.policy):
         # Must point to the frozen exported TWIST student JIT actor.
-        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0721_twist_rlbcstu/traced/0721_twist_rlbcstu-23500-jit.pt"
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
 
         base_obs_dim = 1155
         history_len = 20
@@ -203,3 +203,212 @@ class G1MimicStuAnyAdapterSafeCfgPPO(G1MimicPrivCfgPPO):
         stand_dof_threshold = 0.15
         world_model_loss_type = "smooth_l1"
         weight_decay = 1e-4
+
+
+# ======================== V3 Tracking-Error-Aware Adapter ========================
+
+class G1MimicStuAnyAdapterV3Cfg(G1MimicStuAnyAdapterSafeCfg):
+    """V3: let only the residual adapter see tracking error features.
+
+    The history encoder and world model remain dynamics-only:
+        history frame = selected robot state + previous action
+
+    The adapter additionally receives:
+        reference root velocity/yaw velocity,
+        reference roll/pitch - actual roll/pitch,
+        reference dof position - actual dof position.
+    """
+
+    class env(G1MimicStuAnyAdapterSafeCfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+
+
+class G1MimicStuAnyAdapterV3CfgPPO(G1MimicStuAnyAdapterSafeCfgPPO):
+    class runner(G1MimicStuAnyAdapterSafeCfgPPO.runner):
+        policy_class_name = "TwistAnyAdapterActorCritic"
+        algorithm_class_name = "PPOAnyAdapter"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_anyadapter_v3"
+        run_name = ""
+
+    class policy(G1MimicStuAnyAdapterSafeCfgPPO.policy):
+        use_tracking_error_adapter_input = True
+        action_delta_scale = 0.05
+        adapter_gain = 1.0
+
+    class algorithm(G1MimicStuAnyAdapterSafeCfgPPO.algorithm):
+        world_model_loss_coef = 0.05
+        adapter_reg_coef = 0.05
+        stand_anchor_coef = 2.0
+        synthetic_stand_anchor_coef = 2.0
+        world_model_loss_type = "smooth_l1"
+        weight_decay = 1e-4
+
+
+# ======================== V4 Joint Dynamics-Control Adapter ========================
+
+class G1MimicStuAnyAdapterV4Cfg(G1MimicStuAnyAdapterV3Cfg):
+    """V4 uses learnable-but-meaningful dynamics variation for residual training."""
+
+    class env(G1MimicStuAnyAdapterV3Cfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+
+    class domain_rand(G1MimicStuAnyAdapterV3Cfg.domain_rand):
+        gravity_range = (-0.10, 0.10)
+        friction_range = [0.20, 2.0]
+        added_mass_range = [-3.0, 3.0]
+        added_com_range = [-0.05, 0.05]
+        max_push_vel_xy = 0.8
+        max_push_force_end_effector = 15.0
+        motor_strength_range = [0.8, 1.2]
+        mimic_obs_noise_std = 0.01
+        mimic_obs_dropout_prob = 0.02
+        mimic_obs_delay_max = 2
+
+
+class G1MimicStuAnyAdapterV4CfgPPO(G1MimicStuAnyAdapterV3CfgPPO):
+    class runner(G1MimicStuAnyAdapterV3CfgPPO.runner):
+        policy_class_name = "TwistAnyAdapterActorCritic"
+        algorithm_class_name = "PPOAnyAdapter"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_anyadapter_v4_0529"
+        run_name = ""
+        save_interval = 500
+
+    class policy(G1MimicStuAnyAdapterV3CfgPPO.policy):
+        # Explicit here so V4 cannot accidentally inherit a different base.
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
+        use_tracking_error_adapter_input = True
+        compact_adapter_input = True
+        history_policy_grad_scale = 0.10
+        action_delta_scale = 0.10
+        adapter_gain = 1.0
+        init_noise_std = 0.05
+        freeze_base = True
+
+    class algorithm(G1MimicStuAnyAdapterV3CfgPPO.algorithm):
+        joint_encoder_optimization = True
+        world_model_loss_coef = 0.10
+        adapter_reg_coef = 0.01
+        stand_anchor_coef = 2.0
+        synthetic_stand_anchor_coef = 2.0
+        world_model_loss_type = "smooth_l1"
+        weight_decay = 1e-4
+
+
+# ======================== V5 Heading-Aware, Bias-Controlled ========================
+
+class G1MimicStuAnyAdapterV5Cfg(G1MimicStuAnyAdapterV4Cfg):
+    """V5 adds adapter-only heading feedback without changing the base actor."""
+
+    class env(G1MimicStuAnyAdapterV4Cfg.env):
+        anyadapter_context_dim = 2
+        anyadapter_added_obs_dim = 1482
+        anyadapter_final_policy_obs_dim = 2637
+
+
+class G1MimicStuAnyAdapterV5CfgPPO(G1MimicStuAnyAdapterV4CfgPPO):
+    class runner(G1MimicStuAnyAdapterV4CfgPPO.runner):
+        policy_class_name = "TwistAnyAdapterActorCritic"
+        algorithm_class_name = "PPOAnyAdapter"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_anyadapter_v5_heading_0529"
+        run_name = ""
+        save_interval = 500
+
+    class policy(G1MimicStuAnyAdapterV4CfgPPO.policy):
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
+        adapter_context_dim = 2
+        action_delta_scale = 0.05
+        adapter_gain = 1.0
+        freeze_base = True
+
+    class algorithm(G1MimicStuAnyAdapterV4CfgPPO.algorithm):
+        adapter_reg_coef = 0.05
+        adapter_bias_reg_coef = 0.20
+        world_model_loss_coef = 0.10
+        joint_encoder_optimization = True
+
+
+# ======================== V6 Any2Track-Style Layer Adapters ========================
+
+class G1MimicStuAnyAdapterV6Cfg(G1MimicStuAnyAdapterV4Cfg):
+    """Long-history adaptation with in-place stability protection."""
+
+    class env(G1MimicStuAnyAdapterV4Cfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+        anyadapter_history_len = 79
+        anyadapter_hist_state_dim = 51
+        anyadapter_history_frame_dim = 74
+        anyadapter_added_obs_dim = 79 * 74
+        anyadapter_final_policy_obs_dim = 1155 + 79 * 74
+        anyadapter_context_dim = 0
+        anyadapter_fill_history_on_reset = True
+
+    class rewards(G1MimicStuAnyAdapterV4Cfg.rewards):
+        # Mocap root estimates contain small translational noise. Do not reward
+        # stepping until the reference has a clear locomotion command.
+        locomotion_ref_vel_threshold = 0.12
+        in_place_ref_vel_threshold = 0.12
+        in_place_ref_yaw_vel_threshold = 0.12
+
+        class scales(G1MimicStuAnyAdapterV4Cfg.rewards.scales):
+            tracking_root_vel = 1.5
+            feet_slip = -0.2
+            action_rate = -0.02
+            in_place_root_motion = -1.0
+            in_place_feet_motion = -0.25
+
+
+class G1MimicStuAnyAdapterV6CfgPPO(G1MimicPrivCfgPPO):
+    class runner(G1MimicPrivCfgPPO.runner):
+        policy_class_name = "TwistAny2TrackActorCritic"
+        algorithm_class_name = "PPOAny2Track"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_any2track_v6_0529"
+        run_name = ""
+        save_interval = 500
+        # A 24-step rollout contains a contiguous 20-step world-model window.
+        num_steps_per_env = 24
+
+    class policy(G1MimicPrivCfgPPO.policy):
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
+        base_obs_dim = 1155
+        history_len = 79
+        hist_state_dim = 51
+        history_frame_dim = 74
+        wm_target_indices = ANYADAPTER_STATE_INDICES
+        latent_dim = 128
+        world_model_hidden_dims = [512, 512, 256, 256, 256, 128]
+        critic_hidden_dims = [512, 256, 128]
+        activation = "silu"
+        init_noise_std = 0.05
+        fix_action_std = False
+        adapter_gain = 1.0
+        freeze_base = True
+
+    class algorithm(G1MimicPrivCfgPPO.algorithm):
+        # 7001-D V6 observations make the inherited 4-way mini-batches too
+        # large for a 24 GiB GPU at 4096 envs.  This keeps the same rollout and
+        # number of PPO epochs while reducing the per-update memory peak by 4x.
+        num_mini_batches = 16
+        policy_learning_rate = 5e-5
+        world_model_learning_rate = 1e-4
+        world_model_loss_coef = 1.0
+        world_model_loss_type = "smooth_l1"
+        world_model_sequence_length = 20
+        world_model_num_epochs = 1
+        world_model_component_weights = [5.0, 5.0, 1.0, 0.5]
+        # Layer adapters can otherwise grow far beyond the frozen base action.
+        adapter_reg_coef = 0.05
+        adapter_bias_reg_coef = 0.0
+        # For stationary references with neutral legs, constrain only the
+        # 12 leg-action deltas. Arm and waist tracking remain unrestricted.
+        stand_anchor_coef = 0.5
+        synthetic_stand_anchor_coef = 0.0
+        stand_vel_threshold = 0.12
+        stand_dof_threshold = 0.18
+        weight_decay = 1e-5
