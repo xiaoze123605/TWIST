@@ -36,6 +36,7 @@ class PPOAnyAdapter(PPO):
         world_model_loss_type: str = "smooth_l1",
         weight_decay: float = 0.0,
         joint_encoder_optimization: bool = False,
+        separate_wm_updates_history_encoder: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -50,6 +51,9 @@ class PPOAnyAdapter(PPO):
         self.world_model_loss_type = world_model_loss_type
         self.weight_decay = float(weight_decay)
         self.joint_encoder_optimization = bool(joint_encoder_optimization)
+        self.separate_wm_updates_history_encoder = bool(
+            separate_wm_updates_history_encoder
+        )
         self.skip_dagger_update = True
         self.requires_next_observations = True
 
@@ -59,21 +63,62 @@ class PPOAnyAdapter(PPO):
         if getattr(self.actor_critic, "std", None) is not None and self.actor_critic.std.requires_grad:
             self.ppo_params.append(self.actor_critic.std)
 
-        self.wm_params = []
-        self.wm_params += [p for p in self.actor_critic.history_encoder.parameters() if p.requires_grad]
-        self.wm_params += [p for p in self.actor_critic.world_model.parameters() if p.requires_grad]
-
-        if self.joint_encoder_optimization:
-            self.ppo_params += self.wm_params
+        self.history_encoder_params = [
+            p for p in self.actor_critic.history_encoder.parameters() if p.requires_grad
+        ]
+        self.world_model_params = [
+            p for p in self.actor_critic.world_model.parameters() if p.requires_grad
+        ]
+        # The WM optimizer owns the encoder only in joint mode. In the legacy
+        # non-joint mode the encoder stays inside ppo_optimizer (the WM loss
+        # gradient is accumulated before the policy step, see update()), so it
+        # remains trainable without being owned by wm_optimizer. Any2Track
+        # opts out: its encoder is trained exclusively by the autoregressive
+        # world-model update via separate_wm_updates_history_encoder.
+        if not self.joint_encoder_optimization and not self.separate_wm_updates_history_encoder:
+            self.ppo_params = self.ppo_params + self.history_encoder_params
+        self.wm_params = list(self.world_model_params)
+        if self.joint_encoder_optimization or self.separate_wm_updates_history_encoder:
+            self.wm_params = list(self.history_encoder_params) + self.wm_params
 
         self.ppo_optimizer = torch.optim.Adam(
             self.ppo_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
-        if not self.joint_encoder_optimization:
-            self.wm_optimizer = torch.optim.Adam(self.wm_params, lr=self.learning_rate)
+        # The L2-style weight decay of torch.optim.Adam dominates the tiny
+        # WM/encoder gradients (the encoder policy path is scaled by
+        # history_policy_grad_scale and the WM gradient shrinks as it
+        # converges), which walks both networks to zero: in the formal run
+        # the encoder collapsed by iter ~500 and the world model by iter
+        # ~2000. wm_optimizer is therefore created without weight decay.
+        wm_weight_decay = 0.0
+        self.wm_optimizer = torch.optim.Adam(
+            self.wm_params,
+            lr=self.learning_rate,
+            weight_decay=wm_weight_decay,
+        )
         self.optimizer = self.ppo_optimizer
+        ppo_optimizer_param_ids = {
+            id(p) for group in self.ppo_optimizer.param_groups for p in group["params"]
+        }
+        wm_optimizer_param_ids = {
+            id(p) for group in self.wm_optimizer.param_groups for p in group["params"]
+        }
+        self.history_encoder_in_ppo_optimizer = all(
+            id(p) in ppo_optimizer_param_ids for p in self.history_encoder_params
+        )
+        self.history_encoder_in_wm_optimizer = all(
+            id(p) in wm_optimizer_param_ids for p in self.history_encoder_params
+        )
+        print(
+            "[AnyAdapter] history_encoder_in_ppo_optimizer="
+            f"{self.history_encoder_in_ppo_optimizer}"
+        )
+        print(
+            "[AnyAdapter] history_encoder_in_wm_optimizer="
+            f"{self.history_encoder_in_wm_optimizer}"
+        )
         self.anyadapter_metrics = {}
         self._wm_target_warning_printed = False
 
@@ -126,6 +171,7 @@ class PPOAnyAdapter(PPO):
         weights = getattr(self.actor_critic, "wm_component_weights", None)
         if splits is not None and weights is not None:
             total_loss = pred_next_state.new_zeros(())
+            component_info = {}
             for name, (start, end) in splits.items():
                 w = float(weights.get(name, 1.0))
                 pred_slice = pred_next_state[:, start:end]
@@ -135,15 +181,19 @@ class PPOAnyAdapter(PPO):
                 else:
                     comp_loss_per_dim = F.smooth_l1_loss(pred_slice, target_slice, reduction="none")
                 comp_loss_per_sample = comp_loss_per_dim.mean(dim=-1, keepdim=True)
-                total_loss = total_loss + w * ((comp_loss_per_sample * valid_mask).sum() / valid_count)
-            return total_loss
+                # Log the raw masked component loss. The training objective
+                # keeps its existing weighted sum exactly unchanged.
+                component_loss = (comp_loss_per_sample * valid_mask).sum() / valid_count
+                component_info[f"wm_{name}_loss"] = float(component_loss.detach().cpu())
+                total_loss = total_loss + w * component_loss
+            return total_loss, component_info
         else:
             if self.world_model_loss_type == "mse":
                 loss_per_dim = (pred_next_state - target_next_state) ** 2
             else:
                 loss_per_dim = F.smooth_l1_loss(pred_next_state, target_next_state, reduction="none")
             loss_per_sample = loss_per_dim.mean(dim=-1, keepdim=True)
-            return (loss_per_sample * valid_mask).sum() / valid_count
+            return (loss_per_sample * valid_mask).sum() / valid_count, {}
 
     def _stand_anchor_loss_from_batch(self, obs_batch):
         base_obs, _ = self.actor_critic.split_obs(obs_batch)
@@ -192,6 +242,32 @@ class PPOAnyAdapter(PPO):
             return 0.0
         return float(torch.sqrt(sq_sum).detach().cpu())
 
+    @staticmethod
+    def _gradient_values_norm(gradients):
+        """L2 norm for gradients returned by torch.autograd.grad."""
+        sq_sum = None
+        for grad in gradients:
+            if grad is None:
+                continue
+            norm_sq = torch.sum(grad.detach() ** 2)
+            sq_sum = norm_sq if sq_sum is None else sq_sum + norm_sq
+        if sq_sum is None:
+            return 0.0
+        return float(torch.sqrt(sq_sum).detach().cpu())
+
+    def _diagnostic_grad_norm(self, loss, parameters):
+        """Measure one loss source without changing accumulated training grads."""
+        parameters = tuple(parameters)
+        if not parameters or not loss.requires_grad:
+            return 0.0
+        gradients = torch.autograd.grad(
+            loss,
+            parameters,
+            retain_graph=True,
+            allow_unused=True,
+        )
+        return self._gradient_values_norm(gradients)
+
     def update(self):
         mean_value_loss = 0.0
         mean_surrogate_loss = 0.0
@@ -199,14 +275,33 @@ class PPOAnyAdapter(PPO):
         mean_adapter_reg_loss = 0.0
         mean_adapter_bias_reg_loss = 0.0
         mean_adapter_delta_l2 = 0.0
+        mean_dynamics_delta_l2 = 0.0
+        mean_tracking_delta_l2 = 0.0
+        mean_dynamics_mean_abs_delta = 0.0
+        mean_tracking_mean_abs_delta = 0.0
+        mean_dynamics_max_abs_delta = 0.0
+        mean_tracking_max_abs_delta = 0.0
+        mean_branch_balance_ratio = 0.0
+        mean_branch_cosine_similarity = 0.0
         mean_stand_anchor_loss = 0.0
         mean_synthetic_stand_anchor_loss = 0.0
         mean_stand_sample_ratio = 0.0
         mean_history_encoder_ppo_grad_norm = 0.0
         mean_history_encoder_wm_grad_norm = 0.0
+        mean_history_encoder_total_grad_norm = 0.0
         mean_adapter_grad_norm = 0.0
+        mean_dynamics_branch_grad_norm = 0.0
+        mean_tracking_branch_grad_norm = 0.0
         mean_max_abs_delta_action = 0.0
         mean_mean_abs_delta_action = 0.0
+        mean_wm_component_losses = {
+            "wm_ang_vel_loss": 0.0,
+            "wm_orientation_loss": 0.0,
+            "wm_dof_pos_loss": 0.0,
+            "wm_dof_vel_loss": 0.0,
+        }
+        history_ppo_grad_measurements = 0
+        history_wm_grad_measurements = 0
         wm_loss_skipped = False
 
         if self.actor_critic.is_recurrent:
@@ -283,12 +378,23 @@ class PPOAnyAdapter(PPO):
             stand_anchor_loss = obs_batch.new_tensor(0.0)
             synthetic_stand_anchor_loss = obs_batch.new_tensor(0.0)
             stand_sample_ratio = obs_batch.new_tensor(0.0)
+            wm_component_info = {}
+            history_encoder_ppo_grad_norm = None
+            history_encoder_wm_grad_norm = None
             if hasattr(self.actor_critic, "adapter_regularization_loss") and self.adapter_reg_coef > 0.0:
                 adapter_reg_loss, adapter_info = self.actor_critic.adapter_regularization_loss(obs_batch)
                 loss = loss + self.adapter_reg_coef * adapter_reg_loss
                 mean_adapter_delta_l2 += adapter_info.get("adapter_delta_l2", adapter_reg_loss.item())
                 mean_max_abs_delta_action += adapter_info.get("max_abs_delta_action", 0.0)
                 mean_mean_abs_delta_action += adapter_info.get("mean_abs_delta_action", 0.0)
+                mean_dynamics_delta_l2 += adapter_info.get("dynamics_delta_l2", 0.0)
+                mean_tracking_delta_l2 += adapter_info.get("tracking_delta_l2", 0.0)
+                mean_dynamics_mean_abs_delta += adapter_info.get("dynamics_mean_abs_delta", 0.0)
+                mean_tracking_mean_abs_delta += adapter_info.get("tracking_mean_abs_delta", 0.0)
+                mean_dynamics_max_abs_delta += adapter_info.get("dynamics_max_abs_delta", 0.0)
+                mean_tracking_max_abs_delta += adapter_info.get("tracking_max_abs_delta", 0.0)
+                mean_branch_balance_ratio += adapter_info.get("branch_balance_ratio", 0.0)
+                mean_branch_cosine_similarity += adapter_info.get("branch_cosine_similarity", 0.0)
             if (
                 hasattr(self.actor_critic, "adapter_bias_regularization_loss")
                 and self.adapter_bias_reg_coef > 0.0
@@ -302,38 +408,58 @@ class PPOAnyAdapter(PPO):
                 synthetic_stand_anchor_loss = self._synthetic_stand_anchor_loss_from_batch(obs_batch)
                 loss = loss + self.synthetic_stand_anchor_coef * synthetic_stand_anchor_loss
 
+            # Everything accumulated so far is the policy-side objective. In
+            # joint mode the WM term is backwarded separately first so its
+            # encoder gradient can be measured before policy accumulation.
+            ppo_loss = loss
             wm_target_available = self._has_world_model_target()
+            weighted_wm_loss = None
             if self.joint_encoder_optimization and self.world_model_loss_coef > 0.0:
                 if hasattr(self.actor_critic, "predict_world_model") and wm_target_available:
-                    wm_loss = self._world_model_loss_from_batch(
+                    wm_loss, wm_component_info = self._world_model_loss_from_batch(
                         obs_batch,
                         actions_batch,
                         next_obs_batch,
                         dones_batch,
                         next_obs_available_batch,
                     )
-                    loss = loss + self.world_model_loss_coef * wm_loss
+                    weighted_wm_loss = self.world_model_loss_coef * wm_loss
                 else:
                     wm_loss_skipped = True
                     self._warn_missing_world_model_target_once()
 
-            self.ppo_optimizer.zero_grad()
-            if hasattr(self, "wm_optimizer"):
-                self.wm_optimizer.zero_grad()
-            loss.backward()
-            history_encoder_ppo_grad_norm = self._grad_norm(self.actor_critic.history_encoder.parameters())
-            adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
-            nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
-            self.ppo_optimizer.step()
-
-            if (
+            run_non_joint_wm_update = (
                 not self.joint_encoder_optimization
                 and hasattr(self.actor_critic, "predict_world_model")
                 and self.world_model_loss_coef > 0.0
-            ):
+            )
+
+            # Policy source diagnostic, read-only and measured once per update
+            # before any backward frees the graph. WM gradients below are read
+            # from the real WM backward right after it runs.
+            if history_ppo_grad_measurements == 0:
+                history_params = tuple(self.actor_critic.history_encoder.parameters())
+                history_encoder_ppo_grad_norm = self._diagnostic_grad_norm(
+                    ppo_loss,
+                    history_params,
+                )
+                history_ppo_grad_measurements += 1
+
+            self.ppo_optimizer.zero_grad()
+            self.wm_optimizer.zero_grad()
+            if self.joint_encoder_optimization and weighted_wm_loss is not None:
+                weighted_wm_loss.backward()
+                history_encoder_wm_grad_norm = self._grad_norm(
+                    self.actor_critic.history_encoder.parameters()
+                )
+                history_wm_grad_measurements += 1
+            if run_non_joint_wm_update:
                 if wm_target_available:
-                    self.wm_optimizer.zero_grad()
-                    wm_loss = self._world_model_loss_from_batch(
+                    # Backward the WM loss before the policy step: in non-joint
+                    # mode the encoder is owned by ppo_optimizer, so its WM
+                    # gradient is applied by the ppo step below while
+                    # wm_optimizer only consumes the world-model gradients.
+                    wm_loss, wm_component_info = self._world_model_loss_from_batch(
                         obs_batch,
                         actions_batch,
                         next_obs_batch,
@@ -342,16 +468,44 @@ class PPOAnyAdapter(PPO):
                     )
                     (self.world_model_loss_coef * wm_loss).backward()
                     history_encoder_wm_grad_norm = self._grad_norm(self.actor_critic.history_encoder.parameters())
-                    nn.utils.clip_grad_norm_(self.wm_params, self.max_grad_norm)
-                    self.wm_optimizer.step()
+                    history_wm_grad_measurements += 1
                 else:
                     history_encoder_wm_grad_norm = 0.0
                     wm_loss_skipped = True
                     self._warn_missing_world_model_target_once()
-            elif self.joint_encoder_optimization:
-                history_encoder_wm_grad_norm = history_encoder_ppo_grad_norm
+            # In joint mode this accumulates policy gradients on top of the WM
+            # gradients already stored on HistoryEncoder. The resulting .grad
+            # is mathematically the gradient of ppo_loss + weighted_wm_loss;
+            # in non-joint mode it is the policy gradient on top of the WM
+            # gradient that the ppo step is about to consume.
+            ppo_loss.backward()
+            history_encoder_total_grad_norm = self._grad_norm(
+                self.actor_critic.history_encoder.parameters()
+            )
+            adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
+            if getattr(self.actor_critic, "use_dual_branch_adapter", False):
+                dynamics_branch_grad_norm = self._grad_norm(
+                    self.actor_critic.adapter.dynamics_branch.parameters()
+                )
+                tracking_branch_grad_norm = self._grad_norm(
+                    self.actor_critic.adapter.tracking_branch.parameters()
+                )
             else:
-                history_encoder_wm_grad_norm = 0.0
+                dynamics_branch_grad_norm = 0.0
+                tracking_branch_grad_norm = 0.0
+            if self.joint_encoder_optimization:
+                nn.utils.clip_grad_norm_(
+                    self.ppo_params + self.wm_params,
+                    self.max_grad_norm,
+                )
+            else:
+                nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
+            self.ppo_optimizer.step()
+            if run_non_joint_wm_update and wm_target_available:
+                nn.utils.clip_grad_norm_(self.wm_params, self.max_grad_norm)
+                self.wm_optimizer.step()
+            elif self.joint_encoder_optimization:
+                self.wm_optimizer.step()
 
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
@@ -361,9 +515,16 @@ class PPOAnyAdapter(PPO):
             mean_stand_anchor_loss += stand_anchor_loss.item()
             mean_synthetic_stand_anchor_loss += synthetic_stand_anchor_loss.item()
             mean_stand_sample_ratio += stand_sample_ratio.item()
-            mean_history_encoder_ppo_grad_norm += history_encoder_ppo_grad_norm
-            mean_history_encoder_wm_grad_norm += history_encoder_wm_grad_norm
+            if history_encoder_ppo_grad_norm is not None:
+                mean_history_encoder_ppo_grad_norm += history_encoder_ppo_grad_norm
+            if history_encoder_wm_grad_norm is not None:
+                mean_history_encoder_wm_grad_norm += history_encoder_wm_grad_norm
+            mean_history_encoder_total_grad_norm += history_encoder_total_grad_norm
             mean_adapter_grad_norm += adapter_grad_norm
+            mean_dynamics_branch_grad_norm += dynamics_branch_grad_norm
+            mean_tracking_branch_grad_norm += tracking_branch_grad_norm
+            for key in mean_wm_component_losses:
+                mean_wm_component_losses[key] += wm_component_info.get(key, 0.0)
 
         if self.fix_std:
             std_stage = min(max((self.counter - self.std_schedule[2]), 0) / self.std_schedule[3], 1)
@@ -376,19 +537,44 @@ class PPOAnyAdapter(PPO):
             "world_model_loss": mean_wm_loss / num_updates,
             "world_model_loss_skipped": float(wm_loss_skipped),
             "adapter_delta_l2": mean_adapter_delta_l2 / num_updates,
+            "dynamics_delta_l2": mean_dynamics_delta_l2 / num_updates,
+            "tracking_delta_l2": mean_tracking_delta_l2 / num_updates,
+            "dynamics_mean_abs_delta": mean_dynamics_mean_abs_delta / num_updates,
+            "tracking_mean_abs_delta": mean_tracking_mean_abs_delta / num_updates,
+            "dynamics_max_abs_delta": mean_dynamics_max_abs_delta / num_updates,
+            "tracking_max_abs_delta": mean_tracking_max_abs_delta / num_updates,
+            "branch_balance_ratio": mean_branch_balance_ratio / num_updates,
+            "branch_cosine_similarity": mean_branch_cosine_similarity / num_updates,
             "adapter_reg_loss": mean_adapter_reg_loss / num_updates,
             "adapter_bias_reg_loss": mean_adapter_bias_reg_loss / num_updates,
             "stand_anchor_loss": mean_stand_anchor_loss / num_updates,
             "synthetic_stand_anchor_loss": mean_synthetic_stand_anchor_loss / num_updates,
             "stand_sample_ratio": mean_stand_sample_ratio / num_updates,
-            "history_encoder_ppo_grad_norm": mean_history_encoder_ppo_grad_norm / num_updates,
-            "history_encoder_wm_grad_norm": mean_history_encoder_wm_grad_norm / num_updates,
+            "history_encoder_ppo_grad_norm": (
+                mean_history_encoder_ppo_grad_norm / max(history_ppo_grad_measurements, 1)
+            ),
+            "history_encoder_wm_grad_norm": (
+                mean_history_encoder_wm_grad_norm / max(history_wm_grad_measurements, 1)
+            ),
+            "history_encoder_total_grad_norm": mean_history_encoder_total_grad_norm / num_updates,
             "adapter_grad_norm": mean_adapter_grad_norm / num_updates,
+            "dynamics_branch_grad_norm": mean_dynamics_branch_grad_norm / num_updates,
+            "tracking_branch_grad_norm": mean_tracking_branch_grad_norm / num_updates,
             "max_abs_delta_action": mean_max_abs_delta_action / num_updates,
             "mean_abs_delta_action": mean_mean_abs_delta_action / num_updates,
             "surrogate_loss": mean_surrogate_loss / num_updates,
             "value_loss": mean_value_loss / num_updates,
         }
+        for key, total in mean_wm_component_losses.items():
+            value = total / num_updates
+            self.anyadapter_metrics[key] = value
+        # Preserve the component key schema previously consumed by the runner.
+        self.anyadapter_metrics.update({
+            "world_model_loss_ang_vel": self.anyadapter_metrics["wm_ang_vel_loss"],
+            "world_model_loss_orientation": self.anyadapter_metrics["wm_orientation_loss"],
+            "world_model_loss_dof_pos": self.anyadapter_metrics["wm_dof_pos_loss"],
+            "world_model_loss_dof_vel": self.anyadapter_metrics["wm_dof_vel_loss"],
+        })
         self.update_counter()
         return (
             mean_value_loss / num_updates,

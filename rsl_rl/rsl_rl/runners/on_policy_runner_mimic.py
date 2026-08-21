@@ -379,7 +379,17 @@ class OnPolicyRunnerMimic:
                 key = f"world_model_loss_{component}"
                 if key in anyadapter_metrics:
                     wandb_dict[f'AnyAdapter/{key}'] = anyadapter_metrics[key]
+                canonical_key = f"wm_{component}_loss"
+                wandb_dict[f'AnyAdapter/{canonical_key}'] = anyadapter_metrics.get(canonical_key, 0.0)
             wandb_dict['AnyAdapter/adapter_delta_l2'] = anyadapter_metrics.get("adapter_delta_l2", 0.0)
+            wandb_dict['AnyAdapter/dynamics_delta_l2'] = anyadapter_metrics.get("dynamics_delta_l2", 0.0)
+            wandb_dict['AnyAdapter/tracking_delta_l2'] = anyadapter_metrics.get("tracking_delta_l2", 0.0)
+            wandb_dict['AnyAdapter/dynamics_mean_abs_delta'] = anyadapter_metrics.get("dynamics_mean_abs_delta", 0.0)
+            wandb_dict['AnyAdapter/tracking_mean_abs_delta'] = anyadapter_metrics.get("tracking_mean_abs_delta", 0.0)
+            wandb_dict['AnyAdapter/dynamics_max_abs_delta'] = anyadapter_metrics.get("dynamics_max_abs_delta", 0.0)
+            wandb_dict['AnyAdapter/tracking_max_abs_delta'] = anyadapter_metrics.get("tracking_max_abs_delta", 0.0)
+            wandb_dict['AnyAdapter/branch_balance_ratio'] = anyadapter_metrics.get("branch_balance_ratio", 0.0)
+            wandb_dict['AnyAdapter/branch_cosine_similarity'] = anyadapter_metrics.get("branch_cosine_similarity", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
             wandb_dict['AnyAdapter/adapter_bias_reg_loss'] = anyadapter_metrics.get("adapter_bias_reg_loss", 0.0)
             wandb_dict['AnyAdapter/stand_anchor_loss'] = anyadapter_metrics.get("stand_anchor_loss", 0.0)
@@ -387,7 +397,10 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/stand_sample_ratio'] = anyadapter_metrics.get("stand_sample_ratio", 0.0)
             wandb_dict['AnyAdapter/history_encoder_ppo_grad_norm'] = anyadapter_metrics.get("history_encoder_ppo_grad_norm", 0.0)
             wandb_dict['AnyAdapter/history_encoder_wm_grad_norm'] = anyadapter_metrics.get("history_encoder_wm_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/history_encoder_total_grad_norm'] = anyadapter_metrics.get("history_encoder_total_grad_norm", 0.0)
             wandb_dict['AnyAdapter/adapter_grad_norm'] = anyadapter_metrics.get("adapter_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/dynamics_branch_grad_norm'] = anyadapter_metrics.get("dynamics_branch_grad_norm", 0.0)
+            wandb_dict['AnyAdapter/tracking_branch_grad_norm'] = anyadapter_metrics.get("tracking_branch_grad_norm", 0.0)
             wandb_dict['AnyAdapter/max_abs_delta_action'] = anyadapter_metrics.get("max_abs_delta_action", 0.0)
             wandb_dict['AnyAdapter/mean_abs_delta_action'] = anyadapter_metrics.get("mean_abs_delta_action", 0.0)
             wandb_dict['AnyAdapter/surrogate_loss'] = anyadapter_metrics.get("surrogate_loss", locs['mean_surrogate_loss'])
@@ -400,14 +413,25 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter wm dof pos:':>{pad}} {anyadapter_metrics.get('world_model_loss_dof_pos', 0.0):.6f}\n"""
                 f"""{'AnyAdapter wm dof vel:':>{pad}} {anyadapter_metrics.get('world_model_loss_dof_vel', 0.0):.6f}\n"""
                 f"""{'AnyAdapter delta L2:':>{pad}} {anyadapter_metrics.get('adapter_delta_l2', 0.0):.6f}\n"""
+                f"""{'AnyAdapter dyn delta L2:':>{pad}} {anyadapter_metrics.get('dynamics_delta_l2', 0.0):.6f}\n"""
+                f"""{'AnyAdapter err delta L2:':>{pad}} {anyadapter_metrics.get('tracking_delta_l2', 0.0):.6f}\n"""
+                f"""{'AnyAdapter dyn mean |delta|:':>{pad}} {anyadapter_metrics.get('dynamics_mean_abs_delta', 0.0):.6f}\n"""
+                f"""{'AnyAdapter err mean |delta|:':>{pad}} {anyadapter_metrics.get('tracking_mean_abs_delta', 0.0):.6f}\n"""
+                f"""{'AnyAdapter dyn max |delta|:':>{pad}} {anyadapter_metrics.get('dynamics_max_abs_delta', 0.0):.6f}\n"""
+                f"""{'AnyAdapter err max |delta|:':>{pad}} {anyadapter_metrics.get('tracking_max_abs_delta', 0.0):.6f}\n"""
+                f"""{'AnyAdapter branch balance:':>{pad}} {anyadapter_metrics.get('branch_balance_ratio', 0.0):.6f}\n"""
+                f"""{'AnyAdapter branch cosine:':>{pad}} {anyadapter_metrics.get('branch_cosine_similarity', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter bias reg:':>{pad}} {anyadapter_metrics.get('adapter_bias_reg_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter stand anchor:':>{pad}} {anyadapter_metrics.get('stand_anchor_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter synth stand:':>{pad}} {anyadapter_metrics.get('synthetic_stand_anchor_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter stand ratio:':>{pad}} {anyadapter_metrics.get('stand_sample_ratio', 0.0):.6f}\n"""
-                f"""{'AnyAdapter hist PPO grad:':>{pad}} {anyadapter_metrics.get('history_encoder_ppo_grad_norm', 0.0):.6f}\n"""
-                f"""{'AnyAdapter hist WM grad:':>{pad}} {anyadapter_metrics.get('history_encoder_wm_grad_norm', 0.0):.6f}\n"""
-                f"""{'AnyAdapter adapter grad:':>{pad}} {anyadapter_metrics.get('adapter_grad_norm', 0.0):.6f}\n"""
+                f"""{'AnyAdapter hist PPO grad:':>{pad}} {anyadapter_metrics.get('history_encoder_ppo_grad_norm', 0.0):.6e}\n"""
+                f"""{'AnyAdapter hist WM grad:':>{pad}} {anyadapter_metrics.get('history_encoder_wm_grad_norm', 0.0):.6e}\n"""
+                f"""{'AnyAdapter hist total grad:':>{pad}} {anyadapter_metrics.get('history_encoder_total_grad_norm', 0.0):.6e}\n"""
+                f"""{'AnyAdapter dyn grad:':>{pad}} {anyadapter_metrics.get('dynamics_branch_grad_norm', 0.0):.6e}\n"""
+                f"""{'AnyAdapter err grad:':>{pad}} {anyadapter_metrics.get('tracking_branch_grad_norm', 0.0):.6e}\n"""
+                f"""{'AnyAdapter adapter grad:':>{pad}} {anyadapter_metrics.get('adapter_grad_norm', 0.0):.6e}\n"""
                 f"""{'AnyAdapter max |delta|:':>{pad}} {anyadapter_metrics.get('max_abs_delta_action', 0.0):.6f}\n"""
                 f"""{'AnyAdapter mean |delta|:':>{pad}} {anyadapter_metrics.get('mean_abs_delta_action', 0.0):.6f}\n"""
                 f"""{'AnyAdapter surrogate:':>{pad}} {anyadapter_metrics.get('surrogate_loss', locs['mean_surrogate_loss']):.6f}\n"""
@@ -544,6 +568,11 @@ class OnPolicyRunnerMimic:
                 self.alg.ppo_optimizer.load_state_dict(loaded_dict['ppo_optimizer_state_dict'])
             if hasattr(self.alg, "wm_optimizer") and 'wm_optimizer_state_dict' in loaded_dict:
                 self.alg.wm_optimizer.load_state_dict(loaded_dict['wm_optimizer_state_dict'])
+                # load_state_dict copies param_groups verbatim, including the
+                # old run's weight_decay=1e-4 that collapsed the encoder/WM.
+                # Re-apply the constructor's wd=0 policy after loading.
+                for group in self.alg.wm_optimizer.param_groups:
+                    group['weight_decay'] = 0.0
         # self.current_learning_iteration = loaded_dict['iter']
         self.current_learning_iteration = int(os.path.basename(path).split("_")[1].split(".")[0])
         self.env.global_counter = self.current_learning_iteration * 24

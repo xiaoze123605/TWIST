@@ -298,6 +298,35 @@ class G1MimicStuAnyAdapterV4CfgPPO(G1MimicStuAnyAdapterV3CfgPPO):
         weight_decay = 1e-4
 
 
+# ======================== Dual Dynamics / Tracking-Error Branches ========================
+
+class G1MimicStuAnyAdapterDualCfg(G1MimicStuAnyAdapterV4Cfg):
+    """V4 environment with structurally independent residual branches."""
+
+    class env(G1MimicStuAnyAdapterV4Cfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+
+
+class G1MimicStuAnyAdapterDualCfgPPO(G1MimicStuAnyAdapterV4CfgPPO):
+    class runner(G1MimicStuAnyAdapterV4CfgPPO.runner):
+        policy_class_name = "TwistAnyAdapterActorCritic"
+        algorithm_class_name = "PPOAnyAdapter"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_anyadapter_dual"
+        run_name = ""
+
+    class policy(G1MimicStuAnyAdapterV4CfgPPO.policy):
+        use_dual_branch_adapter = True
+        use_tracking_error_adapter_input = True
+        compact_adapter_input = True
+        dynamics_branch_gain = 1.0
+        tracking_branch_gain = 1.0
+        dynamics_action_delta_scale = 0.05
+        tracking_action_delta_scale = 0.05
+        adapter_gain = 1.0
+
+
 # ======================== V5 Heading-Aware, Bias-Controlled ========================
 
 class G1MimicStuAnyAdapterV5Cfg(G1MimicStuAnyAdapterV4Cfg):

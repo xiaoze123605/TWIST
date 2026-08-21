@@ -29,6 +29,9 @@ class PPOAny2Track(PPOAnyAdapter):
         **kwargs,
     ):
         kwargs["joint_encoder_optimization"] = False
+        # Any2Track intentionally trains its history encoder only through the
+        # separate autoregressive world-model update.
+        kwargs["separate_wm_updates_history_encoder"] = True
         super().__init__(*args, **kwargs)
         self.world_model_sequence_length = int(world_model_sequence_length)
         self.world_model_num_epochs = int(world_model_num_epochs)

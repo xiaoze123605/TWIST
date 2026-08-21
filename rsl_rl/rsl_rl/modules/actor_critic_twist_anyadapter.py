@@ -175,6 +175,107 @@ class ResidualAdapter(nn.Module):
         return self.delta_scale * torch.tanh(self.net(x))
 
 
+class DynamicsResidualBranch(nn.Module):
+    """Dynamics-only residual branch conditioned on state, base action and z_dyn."""
+
+    def __init__(
+        self,
+        dynamics_input_dim: int,
+        latent_dim: int,
+        num_actions: int,
+        hidden_dims: Sequence[int] = (128, 128),
+        activation: str = "elu",
+        delta_scale: float = 0.05,
+    ) -> None:
+        super().__init__()
+        self.delta_scale = float(delta_scale)
+        self.net = mlp(dynamics_input_dim + latent_dim, hidden_dims, num_actions, activation)
+        zero_init_last_linear(self.net)
+
+    def forward(self, dynamics_features: torch.Tensor, z_dyn: torch.Tensor) -> torch.Tensor:
+        x = torch.cat([dynamics_features, z_dyn], dim=-1)
+        return self.delta_scale * torch.tanh(self.net(x))
+
+
+class TrackingResidualBranch(nn.Module):
+    """Tracking-only residual branch with no access to the dynamics latent."""
+
+    def __init__(
+        self,
+        tracking_feature_dim: int,
+        num_actions: int,
+        context_dim: int = 0,
+        hidden_dims: Sequence[int] = (128, 128),
+        activation: str = "elu",
+        delta_scale: float = 0.05,
+    ) -> None:
+        super().__init__()
+        self.delta_scale = float(delta_scale)
+        self.context_dim = int(context_dim)
+        input_dim = tracking_feature_dim + num_actions + self.context_dim
+        self.net = mlp(input_dim, hidden_dims, num_actions, activation)
+        zero_init_last_linear(self.net)
+
+    def forward(
+        self,
+        tracking_features: torch.Tensor,
+        base_action: torch.Tensor,
+        context: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        parts = [tracking_features, base_action]
+        if self.context_dim > 0:
+            if context is None:
+                context = base_action.new_zeros(base_action.shape[0], self.context_dim)
+            parts.append(context)
+        return self.delta_scale * torch.tanh(self.net(torch.cat(parts, dim=-1)))
+
+
+class DualResidualAdapter(nn.Module):
+    """Container that keeps both residual branches visible to PPO as one module."""
+
+    def __init__(
+        self,
+        dynamics_input_dim: int,
+        tracking_feature_dim: int,
+        latent_dim: int,
+        num_actions: int,
+        context_dim: int = 0,
+        hidden_dims: Sequence[int] = (128, 128),
+        activation: str = "elu",
+        dynamics_delta_scale: float = 0.05,
+        tracking_delta_scale: float = 0.05,
+    ) -> None:
+        super().__init__()
+        self.dynamics_branch = DynamicsResidualBranch(
+            dynamics_input_dim=dynamics_input_dim,
+            latent_dim=latent_dim,
+            num_actions=num_actions,
+            hidden_dims=hidden_dims,
+            activation=activation,
+            delta_scale=dynamics_delta_scale,
+        )
+        self.tracking_branch = TrackingResidualBranch(
+            tracking_feature_dim=tracking_feature_dim,
+            num_actions=num_actions,
+            context_dim=context_dim,
+            hidden_dims=hidden_dims,
+            activation=activation,
+            delta_scale=tracking_delta_scale,
+        )
+
+    def forward(
+        self,
+        dynamics_features: torch.Tensor,
+        z_dyn: torch.Tensor,
+        tracking_features: torch.Tensor,
+        base_action: torch.Tensor,
+        context: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        delta_dyn = self.dynamics_branch(dynamics_features, z_dyn)
+        delta_err = self.tracking_branch(tracking_features, base_action, context)
+        return delta_dyn, delta_err
+
+
 class TwistAnyAdapterActorCritic(nn.Module):
     """
     RSL-RL compatible actor-critic wrapper.
@@ -210,6 +311,12 @@ class TwistAnyAdapterActorCritic(nn.Module):
         fix_action_std: bool = False,
         action_delta_scale: float = 0.25,
         adapter_gain: float = 1.0,
+        use_dual_branch_adapter: bool = False,
+        dynamics_branch_gain: float = 1.0,
+        tracking_branch_gain: float = 1.0,
+        adapter_branch_mode: str = "full",
+        dynamics_action_delta_scale: Optional[float] = None,
+        tracking_action_delta_scale: Optional[float] = None,
         default_ref_dof_pos: Optional[Sequence[float]] = None,
         use_tracking_error_adapter_input: bool = False,
         compact_adapter_input: bool = False,
@@ -248,6 +355,20 @@ class TwistAnyAdapterActorCritic(nn.Module):
         self.fix_action_std = bool(fix_action_std)
         self.wm_target_indices = None if wm_target_indices is None else torch.as_tensor(wm_target_indices, dtype=torch.long)
         self.adapter_gain = float(adapter_gain)
+        self.use_dual_branch_adapter = bool(use_dual_branch_adapter)
+        self.dynamics_branch_gain = float(dynamics_branch_gain)
+        self.tracking_branch_gain = float(tracking_branch_gain)
+        # Inference-only branch mask used by the dual-branch ablation study.
+        # Only the action forward (actor_mean / act_inference / get_adapter_delta)
+        # is affected; PPO losses, gradients, the world model and
+        # adapter_regularization_loss (which reads the raw branch outputs) are
+        # all left untouched.  "full" reproduces the default dual forward.
+        self.adapter_branch_mode = str(adapter_branch_mode)
+        if self.adapter_branch_mode not in ("full", "dyn_only", "err_only"):
+            raise ValueError(
+                "adapter_branch_mode must be one of 'full', 'dyn_only', "
+                f"'err_only', got {self.adapter_branch_mode!r}."
+            )
         self.use_tracking_error_adapter_input = bool(use_tracking_error_adapter_input)
         self.compact_adapter_input = bool(compact_adapter_input)
         self.history_policy_grad_scale = float(history_policy_grad_scale)
@@ -256,6 +377,10 @@ class TwistAnyAdapterActorCritic(nn.Module):
             raise ValueError("adapter_context_dim must be non-negative.")
         if not 0.0 <= self.history_policy_grad_scale <= 1.0:
             raise ValueError("history_policy_grad_scale must be in [0, 1].")
+        if self.use_dual_branch_adapter and not self.use_tracking_error_adapter_input:
+            raise ValueError(
+                "use_tracking_error_adapter_input must be True when use_dual_branch_adapter is enabled."
+            )
         self.tracking_error_feature_dim = int(num_actions + 6) if self.use_tracking_error_adapter_input else 0
         if default_ref_dof_pos is None:
             default_ref_dof_pos = [0.0] * num_actions
@@ -282,15 +407,43 @@ class TwistAnyAdapterActorCritic(nn.Module):
             if self.compact_adapter_input
             else self.base_obs_dim
         )
-        self.adapter = ResidualAdapter(
-            base_obs_dim=adapter_policy_input_dim,
-            latent_dim=latent_dim,
-            num_actions=num_actions,
-            extra_input_dim=self.tracking_error_feature_dim + self.adapter_context_dim,
-            hidden_dims=adapter_hidden_dims,
-            activation=activation,
-            delta_scale=action_delta_scale,
-        )
+        if self.use_dual_branch_adapter:
+            # Compact features already contain [base_action, current_state].
+            # In non-compact mode base_action is appended explicitly below.
+            dynamics_input_dim = (
+                adapter_policy_input_dim
+                if self.compact_adapter_input
+                else adapter_policy_input_dim + self.num_actions
+            )
+            self.adapter = DualResidualAdapter(
+                dynamics_input_dim=dynamics_input_dim,
+                tracking_feature_dim=self.tracking_error_feature_dim,
+                latent_dim=latent_dim,
+                num_actions=num_actions,
+                context_dim=self.adapter_context_dim,
+                hidden_dims=adapter_hidden_dims,
+                activation=activation,
+                dynamics_delta_scale=(
+                    action_delta_scale
+                    if dynamics_action_delta_scale is None
+                    else dynamics_action_delta_scale
+                ),
+                tracking_delta_scale=(
+                    action_delta_scale
+                    if tracking_action_delta_scale is None
+                    else tracking_action_delta_scale
+                ),
+            )
+        else:
+            self.adapter = ResidualAdapter(
+                base_obs_dim=adapter_policy_input_dim,
+                latent_dim=latent_dim,
+                num_actions=num_actions,
+                extra_input_dim=self.tracking_error_feature_dim + self.adapter_context_dim,
+                hidden_dims=adapter_hidden_dims,
+                activation=activation,
+                delta_scale=action_delta_scale,
+            )
         target_dim = len(wm_target_indices) if wm_target_indices is not None else self.hist_state_dim
         self.world_model = WorldModel(
             hist_state_dim=self.hist_state_dim,
@@ -407,21 +560,39 @@ class TwistAnyAdapterActorCritic(nn.Module):
             current_state = base_obs.index_select(dim=1, index=idx)
         return torch.cat([base_action, current_state], dim=-1)
 
-    def action_delta(
+    def action_delta_components(
         self,
         observations: torch.Tensor,
         detach_history: bool = True,
         base_action: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Return the two raw branch outputs (legacy residual, zero in old mode)."""
         base_obs, history = self.split_obs(observations)
         if detach_history:
             z = self.encode_history_for_policy(history)
         else:
             z = self.encode_history_for_world_model(history)
+
+        if base_action is None and (self.use_dual_branch_adapter or self.compact_adapter_input):
+            base_action = self.base_action(observations)
+
+        if self.use_dual_branch_adapter:
+            if self.compact_adapter_input:
+                dynamics_features = self.compact_adapter_features(base_obs, base_action)
+            else:
+                dynamics_features = torch.cat([base_obs, base_action], dim=-1)
+            tracking_features = self.tracking_error_features(base_obs)
+            context = self.adapter_context(observations)
+            return self.adapter(
+                dynamics_features,
+                z,
+                tracking_features,
+                base_action,
+                context,
+            )
+
         adapter_obs = base_obs
         if self.compact_adapter_input:
-            if base_action is None:
-                base_action = self.base_action(observations)
             adapter_obs = self.compact_adapter_features(base_obs, base_action)
         extra_parts = []
         if self.use_tracking_error_adapter_input:
@@ -430,7 +601,31 @@ class TwistAnyAdapterActorCritic(nn.Module):
         if context is not None:
             extra_parts.append(context)
         extra = torch.cat(extra_parts, dim=-1) if extra_parts else None
-        return self.adapter(adapter_obs, z, extra)
+        legacy_delta = self.adapter(adapter_obs, z, extra)
+        return legacy_delta, torch.zeros_like(legacy_delta)
+
+    def action_delta(
+        self,
+        observations: torch.Tensor,
+        detach_history: bool = True,
+        base_action: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        delta_dyn, delta_err = self.action_delta_components(
+            observations,
+            detach_history=detach_history,
+            base_action=base_action,
+        )
+        if not self.use_dual_branch_adapter:
+            # Legacy single-residual modes keep their historical forward.
+            return delta_dyn
+        if self.adapter_branch_mode == "dyn_only":
+            return self.dynamics_branch_gain * delta_dyn
+        if self.adapter_branch_mode == "err_only":
+            return self.tracking_branch_gain * delta_err
+        return (
+            self.dynamics_branch_gain * delta_dyn
+            + self.tracking_branch_gain * delta_err
+        )
 
     def actor_mean(self, observations: torch.Tensor) -> torch.Tensor:
         base_action = self.base_action(observations)
@@ -446,6 +641,12 @@ class TwistAnyAdapterActorCritic(nn.Module):
 
     def get_adapter_delta(self, observations: torch.Tensor) -> torch.Tensor:
         return self.action_delta(observations, detach_history=True)
+
+    def get_adapter_delta_components(
+        self,
+        observations: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.action_delta_components(observations, detach_history=True)
 
     def predict_world_model(self, observations: torch.Tensor, actions: Optional[torch.Tensor] = None) -> torch.Tensor:
         _, history = self.split_obs(observations)
@@ -519,15 +720,58 @@ class TwistAnyAdapterActorCritic(nn.Module):
         return loss, {"wm_loss": float(loss.detach().cpu())}
 
     def adapter_regularization_loss(self, observations: torch.Tensor) -> Tuple[torch.Tensor, dict]:
-        delta = self.get_adapter_delta(observations)
+        delta_dyn, delta_err = self.get_adapter_delta_components(observations)
+        if self.use_dual_branch_adapter:
+            delta = (
+                self.dynamics_branch_gain * delta_dyn
+                + self.tracking_branch_gain * delta_err
+            )
+        else:
+            delta = delta_dyn
         loss = (delta ** 2).mean()
         delta_l2 = torch.norm(delta, p=2, dim=-1).mean()
-        return loss, {
+        info = {
             "adapter_delta_l2": float(delta_l2.detach().cpu()),
             "adapter_reg_loss": float(loss.detach().cpu()),
             "max_abs_delta_action": float(delta.detach().abs().max().cpu()),
             "mean_abs_delta_action": float(delta.detach().abs().mean().cpu()),
+            # Dual-only diagnostics remain defined for legacy adapters so the
+            # runner can use one stable logging schema.
+            "dynamics_delta_l2": 0.0,
+            "tracking_delta_l2": 0.0,
+            "dynamics_mean_abs_delta": 0.0,
+            "tracking_mean_abs_delta": 0.0,
+            "dynamics_max_abs_delta": 0.0,
+            "tracking_max_abs_delta": 0.0,
+            "branch_balance_ratio": 0.0,
+            "branch_cosine_similarity": 0.0,
         }
+        if self.use_dual_branch_adapter:
+            dynamics_delta_l2 = torch.norm(delta_dyn, p=2, dim=-1).mean()
+            tracking_delta_l2 = torch.norm(delta_err, p=2, dim=-1).mean()
+            info.update({
+                "dynamics_delta_l2": float(dynamics_delta_l2.detach().cpu()),
+                "tracking_delta_l2": float(tracking_delta_l2.detach().cpu()),
+                "dynamics_mean_abs_delta": float(delta_dyn.detach().abs().mean().cpu()),
+                "tracking_mean_abs_delta": float(delta_err.detach().abs().mean().cpu()),
+                "dynamics_max_abs_delta": float(delta_dyn.detach().abs().max().cpu()),
+                "tracking_max_abs_delta": float(delta_err.detach().abs().max().cpu()),
+                "branch_balance_ratio": float(
+                    (
+                        torch.minimum(dynamics_delta_l2, tracking_delta_l2)
+                        / (torch.maximum(dynamics_delta_l2, tracking_delta_l2) + 1e-8)
+                    ).detach().cpu()
+                ),
+                "branch_cosine_similarity": float(
+                    torch.nn.functional.cosine_similarity(
+                        delta_dyn,
+                        delta_err,
+                        dim=-1,
+                        eps=1e-8,
+                    ).mean().detach().cpu()
+                ),
+            })
+        return loss, info
 
     def adapter_bias_regularization_loss(self, observations: torch.Tensor) -> torch.Tensor:
         """Penalize persistent per-joint offsets while preserving phase corrections."""
