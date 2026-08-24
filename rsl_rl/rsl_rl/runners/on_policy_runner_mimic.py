@@ -396,6 +396,8 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/branch_balance_ratio'] = anyadapter_metrics.get("branch_balance_ratio", 0.0)
             wandb_dict['AnyAdapter/branch_cosine_similarity'] = anyadapter_metrics.get("branch_cosine_similarity", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
+            wandb_dict['AnyAdapter/effective_adapter_reg_coef'] = anyadapter_metrics.get("effective_adapter_reg_coef", 0.0)
+            wandb_dict['AnyAdapter/residual_saturation_penalty'] = anyadapter_metrics.get("residual_saturation_penalty", 0.0)
             wandb_dict['AnyAdapter/adapter_bias_reg_loss'] = anyadapter_metrics.get("adapter_bias_reg_loss", 0.0)
             wandb_dict['AnyAdapter/stand_anchor_loss'] = anyadapter_metrics.get("stand_anchor_loss", 0.0)
             wandb_dict['AnyAdapter/synthetic_stand_anchor_loss'] = anyadapter_metrics.get("synthetic_stand_anchor_loss", 0.0)
@@ -427,6 +429,8 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter branch balance:':>{pad}} {anyadapter_metrics.get('branch_balance_ratio', 0.0):.6f}\n"""
                 f"""{'AnyAdapter branch cosine:':>{pad}} {anyadapter_metrics.get('branch_cosine_similarity', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter effective reg:':>{pad}} {anyadapter_metrics.get('effective_adapter_reg_coef', 0.0):.6f}\n"""
+                f"""{'AnyAdapter saturation reg:':>{pad}} {anyadapter_metrics.get('residual_saturation_penalty', 0.0):.6f}\n"""
                 f"""{'AnyAdapter bias reg:':>{pad}} {anyadapter_metrics.get('adapter_bias_reg_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter stand anchor:':>{pad}} {anyadapter_metrics.get('stand_anchor_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter synth stand:':>{pad}} {anyadapter_metrics.get('synthetic_stand_anchor_loss', 0.0):.6f}\n"""
@@ -451,10 +455,19 @@ class OnPolicyRunnerMimic:
                 "wm_uncertainty_mean": "DTERA WM uncertainty",
                 "wm_uncertainty_p90": "DTERA WM uncertainty p90",
                 "wm_uncertainty_p95": "DTERA WM uncertainty p95",
+                "wm_uncertainty_error_corr": "DTERA WM unc/error corr",
+                "actual_wm_error_low_uncertainty": "DTERA WM error low unc",
+                "actual_wm_error_high_uncertainty": "DTERA WM error high unc",
                 "tracking_demand_mean": "DTERA demand mean",
                 "tracking_demand_p90": "DTERA demand p90",
                 "gate_confidence_mean": "DTERA confidence mean",
                 "safety_factor_mean": "DTERA safety mean",
+                "demand_confidence_gate_mean": "DTERA D*Ceff mean",
+                "full_diagnostic_gate_mean": "DTERA D*Ceff*S mean",
+                "residual_warmup_factor": "DTERA residual alpha",
+                "dyn_saturation_fraction": "DTERA dyn saturation",
+                "err_saturation_fraction": "DTERA err saturation",
+                "candidate_saturation_fraction": "DTERA candidate saturation",
                 "gate_mean": "DTERA gate mean",
                 "gate_p10": "DTERA gate p10",
                 "gate_p90": "DTERA gate p90",
@@ -462,14 +475,25 @@ class OnPolicyRunnerMimic:
                 "gate_fraction_gt_0_9": "DTERA gate frac >.9",
                 "risk_loss": "DTERA risk loss",
                 "risk_positive_ratio": "DTERA risk positive",
+                "risk_valid_ratio": "DTERA risk valid",
+                "risk_num_positive": "DTERA risk positives",
+                "risk_num_negative": "DTERA risk negatives",
+                "risk_update_skipped": "DTERA risk skipped",
+                "risk_effective_pos_weight": "DTERA risk pos weight",
+                "risk_prob_positive": "DTERA risk p positive",
+                "risk_prob_negative": "DTERA risk p negative",
+                "risk_probability_gap": "DTERA risk p gap",
                 "p_base_mean": "DTERA p_base",
                 "p_candidate_mean": "DTERA p_candidate",
                 "delta_risk_mean": "DTERA delta risk",
                 "delta_risk_p95": "DTERA delta risk p95",
                 "candidate_delta_l2": "DTERA candidate L2",
+                "gated_delta_l2": "DTERA gated L2",
                 "applied_delta_l2": "DTERA applied L2",
                 "candidate_mean_abs_delta": "DTERA candidate mean",
                 "candidate_max_abs_delta": "DTERA candidate max",
+                "gated_mean_abs_delta": "DTERA gated mean",
+                "gated_max_abs_delta": "DTERA gated max",
                 "applied_mean_abs_delta": "DTERA applied mean",
                 "applied_max_abs_delta": "DTERA applied max",
                 "synthetic_stand_candidate_delta": "DTERA stand candidate",
@@ -606,6 +630,8 @@ class OnPolicyRunnerMimic:
                     f"{mismatched_base_keys[0]}"
                 )
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
+        if hasattr(self.alg, "on_load_checkpoint"):
+            self.alg.on_load_checkpoint(loaded_dict)
         if self.normalize_obs:
             self.normalizer = loaded_dict['normalizer']
             self.critic_normalizer = loaded_dict['critic_normalizer']

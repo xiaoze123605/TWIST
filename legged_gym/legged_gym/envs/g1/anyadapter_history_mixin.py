@@ -72,6 +72,22 @@ class AnyAdapterHistoryMixin:
                     "tracking_error_frame_dim must describe [q error, dq error, "
                     "root velocity/yaw error, roll/pitch error, phase lag]"
                 )
+            self.tracking_ref_dof_vel_filter_alpha = float(
+                getattr(
+                    self.cfg.env,
+                    "tracking_ref_dof_vel_filter_alpha",
+                    0.5,
+                )
+            )
+            self.tracking_ref_dof_vel_clip = float(
+                getattr(self.cfg.env, "tracking_ref_dof_vel_clip", 20.0)
+            )
+            if not 0.0 <= self.tracking_ref_dof_vel_filter_alpha <= 1.0:
+                raise ValueError(
+                    "tracking_ref_dof_vel_filter_alpha must be in [0, 1]"
+                )
+            if self.tracking_ref_dof_vel_clip <= 0.0:
+                raise ValueError("tracking_ref_dof_vel_clip must be positive")
         if self.anyadapter_context_dim not in (0, 2):
             raise ValueError(
                 "anyadapter_context_dim currently supports 0 or 2 "
@@ -110,6 +126,15 @@ class AnyAdapterHistoryMixin:
                 device=self.device,
                 dtype=torch.float32,
             )
+            self.tracking_prev_ref_dof_pos = torch.zeros(
+                self.num_envs, self.num_actions, device=self.device
+            )
+            self.tracking_ref_dof_vel_est = torch.zeros_like(
+                self.tracking_prev_ref_dof_pos
+            )
+            self.tracking_ref_initialized = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
         self.base_num_obs_before_anyadapter = self.num_obs
         self.num_obs = (
             self.base_num_obs_before_anyadapter
@@ -137,21 +162,63 @@ class AnyAdapterHistoryMixin:
         self.anyadapter_prev_actions[env_ids] = 0.0
         if getattr(self, "use_tracking_error_history", False):
             self.tracking_error_history[env_ids] = 0.0
+            self.tracking_prev_ref_dof_pos[env_ids] = 0.0
+            self.tracking_ref_dof_vel_est[env_ids] = 0.0
+            self.tracking_ref_initialized[env_ids] = False
 
     @staticmethod
     def _wrap_to_pi(angle):
         return torch.atan2(torch.sin(angle), torch.cos(angle))
 
-    def _build_tracking_error_frame(self):
-        """Build DTERA errors directly from named state/reference tensors."""
-        q_error = self._ref_dof_pos - self.dof_pos
-        dq_error = self._ref_dof_vel - self.dof_vel
+    def _build_tracking_error_frame(self, tracking_reference):
+        """Build errors only from the degraded reference seen by the student.
 
-        # Reference and actual velocities are both kept in the world frame.
-        root_linear_error = self._ref_root_vel - self.root_states[:, 7:10]
-        root_yaw_error = self._ref_root_ang_vel[:, 2:3] - self.root_states[:, 12:13]
+        Student mimic layout is [height, roll, pitch, yaw, local root velocity,
+        local yaw velocity, q_ref].  In local-observation mode the actual
+        velocities use the matching root-local ``base_*_vel`` tensors.
+        """
+        expected_dim = 8 + self.num_actions
+        if tracking_reference is None or tracking_reference.shape[-1] != expected_dim:
+            raise ValueError(
+                f"tracking_reference must have {expected_dim} dims, got "
+                f"{None if tracking_reference is None else tracking_reference.shape[-1]}"
+            )
+        ref_roll = tracking_reference[:, 1]
+        ref_pitch = tracking_reference[:, 2]
+        ref_root_vel = tracking_reference[:, 4:7]
+        ref_root_yaw_vel = tracking_reference[:, 7:8]
+        ref_dof_pos = tracking_reference[:, 8 : 8 + self.num_actions]
 
-        ref_roll, ref_pitch, _ = _euler_from_quaternion(self._ref_root_rot)
+        reset = (self.episode_length_buf <= 1) | ~self.tracking_ref_initialized
+        dt = max(float(self.dt), 1e-6)
+        raw_ref_dof_vel = (ref_dof_pos - self.tracking_prev_ref_dof_pos) / dt
+        raw_ref_dof_vel = raw_ref_dof_vel.clamp(
+            -self.tracking_ref_dof_vel_clip,
+            self.tracking_ref_dof_vel_clip,
+        )
+        alpha = self.tracking_ref_dof_vel_filter_alpha
+        filtered_ref_dof_vel = (
+            alpha * self.tracking_ref_dof_vel_est
+            + (1.0 - alpha) * raw_ref_dof_vel
+        )
+        ref_dof_vel = torch.where(
+            reset.unsqueeze(-1), self.dof_vel, filtered_ref_dof_vel
+        )
+        self.tracking_prev_ref_dof_pos.copy_(ref_dof_pos.detach())
+        self.tracking_ref_dof_vel_est.copy_(ref_dof_vel.detach())
+        self.tracking_ref_initialized.fill_(True)
+
+        q_error = ref_dof_pos - self.dof_pos
+        dq_error = ref_dof_vel - self.dof_vel
+        if getattr(self, "global_obs", False):
+            actual_root_vel = self.root_states[:, 7:10]
+            actual_yaw_vel = self.root_states[:, 12:13]
+        else:
+            actual_root_vel = self.base_lin_vel
+            actual_yaw_vel = self.base_ang_vel[:, 2:3]
+        root_linear_error = ref_root_vel - actual_root_vel
+        root_yaw_error = ref_root_yaw_vel - actual_yaw_vel
+
         roll_pitch_error = torch.stack(
             (
                 self._wrap_to_pi(ref_roll - self.roll),
@@ -160,8 +227,8 @@ class AnyAdapterHistoryMixin:
             dim=-1,
         )
         phase_lag = (
-            torch.sum(q_error * self._ref_dof_vel, dim=-1, keepdim=True)
-            / (torch.sum(self._ref_dof_vel.square(), dim=-1, keepdim=True) + 1e-6)
+            torch.sum(q_error * ref_dof_vel, dim=-1, keepdim=True)
+            / (torch.sum(ref_dof_vel.square(), dim=-1, keepdim=True) + 1e-6)
         ).clamp(-0.2, 0.2)
         frame = torch.cat(
             (
@@ -194,7 +261,12 @@ class AnyAdapterHistoryMixin:
             dim=-1,
         )
 
-    def _append_anyadapter_history(self, base_obs: torch.Tensor, current_actions=None) -> torch.Tensor:
+    def _append_anyadapter_history(
+        self,
+        base_obs: torch.Tensor,
+        current_actions=None,
+        tracking_reference=None,
+    ) -> torch.Tensor:
         """Append flattened history to base observations and update buffer.
 
         Call this after base_obs has been computed but before it is returned to
@@ -231,7 +303,7 @@ class AnyAdapterHistoryMixin:
             )
         parts = [base_obs, self.anyadapter_history.reshape(self.num_envs, -1)]
         if self.use_tracking_error_history:
-            error_frame = self._build_tracking_error_frame()
+            error_frame = self._build_tracking_error_frame(tracking_reference)
             rolled_error_history = torch.roll(
                 self.tracking_error_history, shifts=-1, dims=1
             )

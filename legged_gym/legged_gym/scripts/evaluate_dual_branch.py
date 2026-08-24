@@ -39,6 +39,7 @@ from legged_gym.gym_utils import task_registry
 from legged_gym.envs.base.legged_robot import euler_from_quaternion
 from legged_gym.envs.base.humanoid_char import convert_to_local_root_body_pos
 from legged_gym.envs.g1.g1_mimic_distill import G1MimicDistill
+from legged_gym.scripts.evaluation_metrics import rmse_from_mean_square
 
 import torch
 from isaacgym import gymapi
@@ -264,6 +265,13 @@ def main() -> None:
     print(f"[evaluate_dual_branch] env num_envs={env.num_envs} "
           f"dt={env.dt} num_actions={env.num_actions}")
 
+    # ``no_rand`` has already been consumed while constructing the env.  The
+    # shared config helper also interprets it as a request to replace the
+    # configured policy/algorithm with the generic ActorCritic/PPO pair, which
+    # is invalid for AnyAdapter/DTERA checkpoint evaluation.  Clear only the
+    # runner-side flag; the already-created environment remains deterministic.
+    eval_args.no_rand = False
+
     train_cfg.runner.resume = False
     ppo_runner, _ = task_registry.make_alg_runner(
         log_root=None, env=env, name=args.task, args=eval_args,
@@ -274,17 +282,19 @@ def main() -> None:
     actor_critic = ppo_runner.get_actor_critic(device=env.device)
     policy = ppo_runner.get_inference_policy(device=env.device)
     dtera_mode_map = {
-        "full_gate_off": ("full", "off"),
-        "full_demand_only": ("full", "demand_only"),
-        "full_demand_confidence": ("full", "demand_confidence"),
-        "full_gate": ("full", "full"),
+        "full_gate_off": ("full", "off", 0.0),
+        "full_demand_only": ("full", "demand_only", 0.0),
+        "full_demand_confidence": ("full", "demand_confidence", 1.0),
+        "full_gate": ("full", "full", 1.0),
     }
     if args.branch_mode in dtera_mode_map:
         if not getattr(actor_critic, "is_dtera", False):
             raise ValueError(f"{args.branch_mode} requires the DTERA task/checkpoint")
-        actor_critic.adapter_branch_mode, actor_critic.gate_mode = dtera_mode_map[
-            args.branch_mode
-        ]
+        (
+            actor_critic.adapter_branch_mode,
+            actor_critic.gate_mode,
+            actor_critic.confidence_gate_strength,
+        ) = dtera_mode_map[args.branch_mode]
     else:
         actor_critic.adapter_branch_mode = args.branch_mode
     print(f"[evaluate_dual_branch] branch mode: {actor_critic.adapter_branch_mode} "
@@ -317,6 +327,13 @@ def main() -> None:
     mean_joint_vel_err = 0.0
     mean_root_vel_err = 0.0
     mean_keybody_err = 0.0
+    root_pos_mse = 0.0
+    roll_mse = 0.0
+    pitch_mse = 0.0
+    joint_pos_mse = 0.0
+    joint_vel_mse = 0.0
+    root_vel_mse = 0.0
+    keybody_mse = 0.0
     mean_dyn_res = 0.0
     mean_err_res = 0.0
     mean_applied_res = 0.0
@@ -345,12 +362,14 @@ def main() -> None:
                 delta_dyn = diagnostics["delta_dyn"]
                 delta_err = diagnostics["delta_err"]
                 candidate = diagnostics["candidate_delta"]
+                gated = diagnostics["gated_delta"]
                 applied = actor_critic.adapter_gain * diagnostics["applied_delta"]
                 gate = diagnostics["gate"]
             else:
                 delta_dyn, delta_err = actor_critic.get_adapter_delta_components(normalized_obs)
                 candidate = combine_branches(actor_critic, delta_dyn, delta_err,
                                              args.branch_mode)
+                gated = candidate
                 applied = actor_critic.adapter_gain * candidate
                 gate = torch.zeros(candidate.shape[0], device=candidate.device) \
                     if args.branch_mode == "base_only" else torch.ones(candidate.shape[0], device=candidate.device)
@@ -359,12 +378,25 @@ def main() -> None:
             applied_res = torch.norm(applied, dim=-1).mean()
 
             if step < 50:
+                dyn_scale = actor_critic.adapter.dynamics_branch.delta_scale
+                err_scale = actor_critic.adapter.tracking_branch.delta_scale
+                candidate_scale = (
+                    actor_critic.candidate_delta_scale()
+                    if hasattr(actor_critic, "candidate_delta_scale")
+                    else (
+                        abs(actor_critic.dynamics_branch_gain) * dyn_scale
+                        + abs(actor_critic.tracking_branch_gain) * err_scale
+                    )
+                )
+                current_roll, current_pitch, _ = euler_from_quaternion(
+                    env.root_states[:, 3:7]
+                )
                 startup.append({
                     "step": step,
-                    "roll_mean": float(env.roll.mean().cpu()),
-                    "roll_abs_max": float(env.roll.abs().max().cpu()),
-                    "pitch_mean": float(env.pitch.mean().cpu()),
-                    "pitch_abs_max": float(env.pitch.abs().max().cpu()),
+                    "roll_mean": float(current_roll.mean().cpu()),
+                    "roll_abs_max": float(current_roll.abs().max().cpu()),
+                    "pitch_mean": float(current_pitch.mean().cpu()),
+                    "pitch_abs_max": float(current_pitch.abs().max().cpu()),
                     "root_height_mean": float(env.root_states[:, 2].mean().cpu()),
                     "base_action_mean_abs": float(base_action.abs().mean().cpu()),
                     "base_action_max_abs": float(base_action.abs().max().cpu()),
@@ -374,9 +406,36 @@ def main() -> None:
                     "delta_err_max_abs": float(delta_err.abs().max().cpu()),
                     "candidate_delta_mean_abs": float(candidate.abs().mean().cpu()),
                     "candidate_delta_max_abs": float(candidate.abs().max().cpu()),
+                    "gated_delta_mean_abs": float(gated.abs().mean().cpu()),
+                    "gated_delta_max_abs": float(gated.abs().max().cpu()),
                     "applied_delta_mean_abs": float(applied.abs().mean().cpu()),
                     "applied_delta_max_abs": float(applied.abs().max().cpu()),
                     "gate_mean": float(gate.mean().cpu()),
+                    "alpha_res": float(
+                        diagnostics.get("residual_warmup_factor", 1.0)
+                    ) if hasattr(actor_critic, "is_dtera") else 1.0,
+                    "dyn_saturation_fraction": float(
+                        (delta_dyn.abs() >= 0.95 * dyn_scale).float().mean().cpu()
+                    ),
+                    "err_saturation_fraction": float(
+                        (delta_err.abs() >= 0.95 * err_scale).float().mean().cpu()
+                    ),
+                    "candidate_saturation_fraction": float(
+                        0.0 if candidate_scale <= 0.0 else
+                        (candidate.abs() >= 0.95 * candidate_scale)
+                        .float().mean().cpu()
+                    ),
+                    "demand_mean": float(
+                        diagnostics.get("demand", gate).mean().cpu()
+                    ),
+                    "confidence_mean": float(
+                        diagnostics.get("confidence", torch.ones_like(gate))
+                        .mean().cpu()
+                    ),
+                    "safety_mean": float(
+                        diagnostics.get("safety", torch.ones_like(gate))
+                        .mean().cpu()
+                    ),
                 })
 
         obs, _, rews, dones, infos = env.step(actions.detach())
@@ -385,24 +444,29 @@ def main() -> None:
         episode_steps += 1
 
         # Tracking errors from the env's current state vs reference motion.
-        root_pos_err = torch.norm(env.root_states[:, :3] - env._ref_root_pos, dim=-1)
+        root_pos_error_vector = env.root_states[:, :3] - env._ref_root_pos
+        root_pos_err = torch.norm(root_pos_error_vector, dim=-1)
+        current_roll, current_pitch, _ = euler_from_quaternion(
+            env.root_states[:, 3:7]
+        )
         roll_ref, pitch_ref, _ = euler_from_quaternion(env._ref_root_rot)
         roll_err = torch.abs(torch.atan2(
-            torch.sin(env.roll - roll_ref), torch.cos(env.roll - roll_ref)
+            torch.sin(current_roll - roll_ref), torch.cos(current_roll - roll_ref)
         ))
         pitch_err = torch.abs(torch.atan2(
-            torch.sin(env.pitch - pitch_ref), torch.cos(env.pitch - pitch_ref)
+            torch.sin(current_pitch - pitch_ref), torch.cos(current_pitch - pitch_ref)
         ))
-        joint_err = torch.abs(env.dof_pos - env._ref_dof_pos).mean(dim=-1)
-        joint_vel_err = torch.abs(env.dof_vel - env._ref_dof_vel).mean(dim=-1)
-        root_vel_err = torch.norm(
-            env.root_states[:, 7:10] - env._ref_root_vel, dim=-1
-        )
-        keybody_err = torch.norm(
+        joint_error_vector = env.dof_pos - env._ref_dof_pos
+        joint_vel_error_vector = env.dof_vel - env._ref_dof_vel
+        root_vel_error_vector = env.root_states[:, 7:10] - env._ref_root_vel
+        keybody_error_vector = (
             env.rigid_body_states[:, env._key_body_ids, 0:3]
-            - env._ref_body_pos[:, env._key_body_ids],
-            dim=-1,
-        ).mean(dim=-1)
+            - env._ref_body_pos[:, env._key_body_ids]
+        )
+        joint_err = joint_error_vector.abs().mean(dim=-1)
+        joint_vel_err = joint_vel_error_vector.abs().mean(dim=-1)
+        root_vel_err = torch.norm(root_vel_error_vector, dim=-1)
+        keybody_err = torch.norm(keybody_error_vector, dim=-1).mean(dim=-1)
 
         mean_rew += float(rews.mean().detach().cpu())
         mean_root_pos_err += float(root_pos_err.mean().detach().cpu())
@@ -412,6 +476,13 @@ def main() -> None:
         mean_joint_vel_err += float(joint_vel_err.mean().detach().cpu())
         mean_root_vel_err += float(root_vel_err.mean().detach().cpu())
         mean_keybody_err += float(keybody_err.mean().detach().cpu())
+        root_pos_mse += float(root_pos_error_vector.square().mean().cpu())
+        roll_mse += float(roll_err.square().mean().cpu())
+        pitch_mse += float(pitch_err.square().mean().cpu())
+        joint_pos_mse += float(joint_error_vector.square().mean().cpu())
+        joint_vel_mse += float(joint_vel_error_vector.square().mean().cpu())
+        root_vel_mse += float(root_vel_error_vector.square().mean().cpu())
+        keybody_mse += float(keybody_error_vector.square().mean().cpu())
         mean_dyn_res += float(dyn_res.detach().cpu())
         mean_err_res += float(err_res.detach().cpu())
         mean_applied_res += float(applied_res.detach().cpu())
@@ -505,6 +576,23 @@ def main() -> None:
             "mean_joint_vel_error_rad_s": mean_joint_vel_err / steps,
             "mean_root_vel_error_m_s": mean_root_vel_err / steps,
             "mean_keybody_pos_error_m": mean_keybody_err / steps,
+            "root_position_rmse_m": float(
+                rmse_from_mean_square(root_pos_mse / steps)
+            ),
+            "root_velocity_rmse_m_s": float(
+                rmse_from_mean_square(root_vel_mse / steps)
+            ),
+            "roll_rmse_rad": float(rmse_from_mean_square(roll_mse / steps)),
+            "pitch_rmse_rad": float(rmse_from_mean_square(pitch_mse / steps)),
+            "joint_position_rmse_rad": float(
+                rmse_from_mean_square(joint_pos_mse / steps)
+            ),
+            "joint_velocity_rmse_rad_s": float(
+                rmse_from_mean_square(joint_vel_mse / steps)
+            ),
+            "keybody_rmse_m": float(
+                rmse_from_mean_square(keybody_mse / steps)
+            ),
             # Reward-component metrics from the env's own episode logger.
             "env_episode_reward_components": {
                 key: value / extras_metric_weight if extras_metric_weight > 0 else None
@@ -552,6 +640,13 @@ def main() -> None:
         "mean_joint_vel_error_rad_s": results["tracking"]["mean_joint_vel_error_rad_s"],
         "mean_root_vel_error_m_s": results["tracking"]["mean_root_vel_error_m_s"],
         "mean_keybody_pos_error_m": results["tracking"]["mean_keybody_pos_error_m"],
+        "root_position_rmse_m": results["tracking"]["root_position_rmse_m"],
+        "root_velocity_rmse_m_s": results["tracking"]["root_velocity_rmse_m_s"],
+        "roll_rmse_rad": results["tracking"]["roll_rmse_rad"],
+        "pitch_rmse_rad": results["tracking"]["pitch_rmse_rad"],
+        "joint_position_rmse_rad": results["tracking"]["joint_position_rmse_rad"],
+        "joint_velocity_rmse_rad_s": results["tracking"]["joint_velocity_rmse_rad_s"],
+        "keybody_rmse_m": results["tracking"]["keybody_rmse_m"],
         "fall_count": fall_count,
         "timeout_count": timeout_count,
         "motion_end_count": motion_end_count,

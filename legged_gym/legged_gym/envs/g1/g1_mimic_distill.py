@@ -452,7 +452,11 @@ class G1MimicDistill(AnyAdapterHistoryMixin, HumanoidMimic):
                         obs_buf.unsqueeze(1)
                     ], dim=1)
                 )
-        self.obs_buf = self._append_anyadapter_history(self.obs_buf, self.actions)
+        self.obs_buf = self._append_anyadapter_history(
+            self.obs_buf,
+            self.actions,
+            tracking_reference=mimic_obs,
+        )
 
 
 ############################################################################################################

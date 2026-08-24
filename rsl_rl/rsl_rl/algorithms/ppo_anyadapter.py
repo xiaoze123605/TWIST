@@ -27,6 +27,9 @@ class PPOAnyAdapter(PPO):
         *args,
         world_model_loss_coef: float = 0.1,
         adapter_reg_coef: float = 1e-3,
+        adapter_reg_initial_coef: float = None,
+        adapter_reg_anneal_iterations: int = 0,
+        residual_saturation_reg_coef: float = 0.0,
         adapter_bias_reg_coef: float = 0.0,
         stand_anchor_coef: float = 1.0,
         synthetic_stand_anchor_coef: float = 0.0,
@@ -38,11 +41,21 @@ class PPOAnyAdapter(PPO):
         joint_encoder_optimization: bool = False,
         separate_wm_updates_history_encoder: bool = False,
         error_prediction_loss_coef: float = 0.0,
+        defer_world_model_update: bool = False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.world_model_loss_coef = float(world_model_loss_coef)
         self.adapter_reg_coef = float(adapter_reg_coef)
+        self.adapter_reg_initial_coef = (
+            self.adapter_reg_coef
+            if adapter_reg_initial_coef is None
+            else float(adapter_reg_initial_coef)
+        )
+        self.adapter_reg_anneal_iterations = int(adapter_reg_anneal_iterations)
+        self.residual_saturation_reg_coef = float(
+            residual_saturation_reg_coef
+        )
         self.adapter_bias_reg_coef = float(adapter_bias_reg_coef)
         self.stand_anchor_coef = float(stand_anchor_coef)
         self.synthetic_stand_anchor_coef = float(synthetic_stand_anchor_coef)
@@ -56,6 +69,7 @@ class PPOAnyAdapter(PPO):
             separate_wm_updates_history_encoder
         )
         self.error_prediction_loss_coef = float(error_prediction_loss_coef)
+        self.defer_world_model_update = bool(defer_world_model_update)
         self.skip_dagger_update = True
         self.requires_next_observations = True
 
@@ -123,6 +137,25 @@ class PPOAnyAdapter(PPO):
         )
         self.anyadapter_metrics = {}
         self._wm_target_warning_printed = False
+
+    def effective_adapter_reg_coef(self, iteration=None):
+        if iteration is None:
+            if hasattr(self.actor_critic, "residual_training_iteration"):
+                iteration = int(
+                    self.actor_critic.residual_training_iteration.item()
+                )
+            else:
+                iteration = self.counter
+        if self.adapter_reg_anneal_iterations <= 0:
+            return self.adapter_reg_coef
+        progress = min(
+            max(float(iteration) / self.adapter_reg_anneal_iterations, 0.0),
+            1.0,
+        )
+        return (
+            self.adapter_reg_initial_coef
+            + progress * (self.adapter_reg_coef - self.adapter_reg_initial_coef)
+        )
 
     def _has_world_model_target(self) -> bool:
         has_next_obs = hasattr(self.storage, "next_observations") and self.storage.next_observations is not None
@@ -287,10 +320,12 @@ class PPOAnyAdapter(PPO):
         return self._gradient_values_norm(gradients)
 
     def update(self):
+        effective_adapter_reg_coef = self.effective_adapter_reg_coef()
         mean_value_loss = 0.0
         mean_surrogate_loss = 0.0
         mean_wm_loss = 0.0
         mean_adapter_reg_loss = 0.0
+        mean_saturation_penalty = 0.0
         mean_adapter_bias_reg_loss = 0.0
         mean_adapter_delta_l2 = 0.0
         mean_dynamics_delta_l2 = 0.0
@@ -328,12 +363,16 @@ class PPOAnyAdapter(PPO):
         mean_error_predictor_grad_norm = 0.0
         tracking_grad_measurements = 0
         dtera_info_keys = (
-            "candidate_delta_l2", "applied_delta_l2",
+            "candidate_delta_l2", "gated_delta_l2", "applied_delta_l2",
             "candidate_mean_abs_delta", "candidate_max_abs_delta",
+            "gated_mean_abs_delta", "gated_max_abs_delta",
             "applied_mean_abs_delta", "applied_max_abs_delta",
             "wm_uncertainty_mean", "wm_uncertainty_p90", "wm_uncertainty_p95",
             "tracking_demand_mean", "tracking_demand_p90", "gate_confidence_mean",
             "safety_factor_mean", "gate_mean", "gate_p10", "gate_p90",
+            "demand_confidence_gate_mean", "full_diagnostic_gate_mean",
+            "residual_warmup_factor", "dyn_saturation_fraction",
+            "err_saturation_fraction", "candidate_saturation_fraction",
             "gate_fraction_lt_0_1", "gate_fraction_gt_0_9",
             "p_base_mean", "p_candidate_mean", "delta_risk_mean", "delta_risk_p95",
             "synthetic_stand_candidate_delta", "synthetic_stand_applied_delta",
@@ -410,6 +449,7 @@ class PPOAnyAdapter(PPO):
 
             wm_loss = obs_batch.new_tensor(0.0)
             adapter_reg_loss = obs_batch.new_tensor(0.0)
+            saturation_penalty = obs_batch.new_tensor(0.0)
             adapter_bias_reg_loss = obs_batch.new_tensor(0.0)
             stand_anchor_loss = obs_batch.new_tensor(0.0)
             synthetic_stand_anchor_loss = obs_batch.new_tensor(0.0)
@@ -417,9 +457,12 @@ class PPOAnyAdapter(PPO):
             wm_component_info = {}
             history_encoder_ppo_grad_norm = None
             history_encoder_wm_grad_norm = None
-            if hasattr(self.actor_critic, "adapter_regularization_loss") and self.adapter_reg_coef > 0.0:
+            if (
+                hasattr(self.actor_critic, "adapter_regularization_loss")
+                and effective_adapter_reg_coef > 0.0
+            ):
                 adapter_reg_loss, adapter_info = self.actor_critic.adapter_regularization_loss(obs_batch)
-                loss = loss + self.adapter_reg_coef * adapter_reg_loss
+                loss = loss + effective_adapter_reg_coef * adapter_reg_loss
                 mean_adapter_delta_l2 += adapter_info.get("adapter_delta_l2", adapter_reg_loss.item())
                 mean_max_abs_delta_action += adapter_info.get("max_abs_delta_action", 0.0)
                 mean_mean_abs_delta_action += adapter_info.get("mean_abs_delta_action", 0.0)
@@ -433,6 +476,17 @@ class PPOAnyAdapter(PPO):
                 mean_branch_cosine_similarity += adapter_info.get("branch_cosine_similarity", 0.0)
                 for key in dtera_info_keys:
                     mean_dtera_info[key] += adapter_info.get(key, 0.0)
+            if (
+                self.residual_saturation_reg_coef > 0.0
+                and hasattr(self.actor_critic, "residual_saturation_penalty")
+            ):
+                saturation_penalty = (
+                    self.actor_critic.residual_saturation_penalty(obs_batch)
+                )
+                loss = (
+                    loss
+                    + self.residual_saturation_reg_coef * saturation_penalty
+                )
             if (
                 hasattr(self.actor_critic, "adapter_bias_regularization_loss")
                 and self.adapter_bias_reg_coef > 0.0
@@ -474,7 +528,11 @@ class PPOAnyAdapter(PPO):
             ppo_loss = loss
             wm_target_available = self._has_world_model_target()
             weighted_wm_loss = None
-            if self.joint_encoder_optimization and self.world_model_loss_coef > 0.0:
+            if (
+                self.joint_encoder_optimization
+                and not self.defer_world_model_update
+                and self.world_model_loss_coef > 0.0
+            ):
                 if hasattr(self.actor_critic, "predict_world_model") and wm_target_available:
                     wm_loss, wm_component_info = self._world_model_loss_from_batch(
                         obs_batch,
@@ -490,6 +548,7 @@ class PPOAnyAdapter(PPO):
 
             run_non_joint_wm_update = (
                 not self.joint_encoder_optimization
+                and not self.defer_world_model_update
                 and hasattr(self.actor_critic, "predict_world_model")
                 and self.world_model_loss_coef > 0.0
             )
@@ -585,13 +644,14 @@ class PPOAnyAdapter(PPO):
             if run_non_joint_wm_update and wm_target_available:
                 nn.utils.clip_grad_norm_(self.wm_params, self.max_grad_norm)
                 self.wm_optimizer.step()
-            elif self.joint_encoder_optimization:
+            elif self.joint_encoder_optimization and not self.defer_world_model_update:
                 self.wm_optimizer.step()
 
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_wm_loss += wm_loss.item()
             mean_adapter_reg_loss += adapter_reg_loss.item()
+            mean_saturation_penalty += saturation_penalty.item()
             mean_adapter_bias_reg_loss += adapter_bias_reg_loss.item()
             mean_stand_anchor_loss += stand_anchor_loss.item()
             mean_synthetic_stand_anchor_loss += synthetic_stand_anchor_loss.item()
@@ -618,7 +678,6 @@ class PPOAnyAdapter(PPO):
             if hasattr(self.actor_critic, "update_std"):
                 self.actor_critic.update_std(std_coef)
 
-        self.storage.clear()
         self.anyadapter_metrics = {
             "world_model_loss": mean_wm_loss / num_updates,
             "world_model_loss_skipped": float(wm_loss_skipped),
@@ -632,6 +691,10 @@ class PPOAnyAdapter(PPO):
             "branch_balance_ratio": mean_branch_balance_ratio / num_updates,
             "branch_cosine_similarity": mean_branch_cosine_similarity / num_updates,
             "adapter_reg_loss": mean_adapter_reg_loss / num_updates,
+            "effective_adapter_reg_coef": effective_adapter_reg_coef,
+            "residual_saturation_penalty": (
+                mean_saturation_penalty / num_updates
+            ),
             "adapter_bias_reg_loss": mean_adapter_bias_reg_loss / num_updates,
             "stand_anchor_loss": mean_stand_anchor_loss / num_updates,
             "synthetic_stand_anchor_loss": mean_synthetic_stand_anchor_loss / num_updates,
@@ -672,12 +735,18 @@ class PPOAnyAdapter(PPO):
             "world_model_loss_dof_pos": self.anyadapter_metrics["wm_dof_pos_loss"],
             "world_model_loss_dof_vel": self.anyadapter_metrics["wm_dof_vel_loss"],
         })
+        if hasattr(self, "_deferred_auxiliary_update"):
+            deferred_metrics = self._deferred_auxiliary_update()
+            self.anyadapter_metrics.update(deferred_metrics)
+        self.storage.clear()
         self.update_counter()
         return (
             mean_value_loss / num_updates,
             mean_surrogate_loss / num_updates,
             0.0,
-            mean_wm_loss / num_updates,
+            self.anyadapter_metrics.get(
+                "world_model_loss", mean_wm_loss / num_updates
+            ),
             mean_adapter_reg_loss / num_updates,
             0.0,
         )

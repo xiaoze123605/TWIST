@@ -346,6 +346,8 @@ class G1MimicStuAnyAdapterDTERACfg(G1MimicStuAnyAdapterV4Cfg):
         use_tracking_error_history = True
         tracking_error_history_len = 20
         tracking_error_frame_dim = 53
+        tracking_ref_dof_vel_filter_alpha = 0.5
+        tracking_ref_dof_vel_clip = 20.0
 
         anyadapter_context_dim = 0
         anyadapter_added_obs_dim = 20 * 74 + 20 * 53
@@ -360,7 +362,7 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         experiment_name = "g1_twist_dtera_gate_v1"
         run_name = ""
         resume = False
-        save_interval = 500
+        save_interval = 50
 
     class policy(G1MimicPrivCfgPPO.policy):
         base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
@@ -403,6 +405,11 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         adapter_gain = 1.0
         adapter_branch_mode = "full"
         init_noise_std = 0.05
+        # The frozen base actor is already competent and each residual branch
+        # is capped at 0.03.  Letting entropy optimization grow exploration to
+        # 0.38 overwhelms the residual learning signal and hurts deterministic
+        # evaluation, so DTERA keeps the intended small exploration scale.
+        fix_action_std = True
         freeze_base = True
 
         world_model_ensemble_size = 3
@@ -410,14 +417,22 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         gate_demand_k = 1.0
         gate_confidence_k = 1.0
         gate_risk_k = 5.0
-        gate_mode = "full"
+        gate_mode = "demand_only"
+        confidence_gate_strength = 0.0
+        residual_warmup_iterations = 1000
         wm_variance_ema_decay = 0.99
 
     class algorithm(G1MimicPrivCfgPPO.algorithm):
+        entropy_coef = 0.0
+        std_schedule = [0.05, 0.05, 0, 1]
+        fixed_action_std = 0.05
         joint_encoder_optimization = True
         world_model_loss_coef = 0.10
         error_prediction_loss_coef = 0.05
         adapter_reg_coef = 0.02
+        adapter_reg_initial_coef = 0.10
+        adapter_reg_anneal_iterations = 1000
+        residual_saturation_reg_coef = 0.05
         adapter_bias_reg_coef = 0.10
         stand_anchor_coef = 0.0
         synthetic_stand_anchor_coef = 2.0
@@ -426,7 +441,9 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         weight_decay = 1e-4
 
         risk_horizon = 10
-        risk_pos_weight = 5.0
+        risk_adaptive_pos_weight = True
+        risk_pos_weight_max = 20.0
+        defer_world_model_update = True
         world_model_bootstrap = True
         world_model_bootstrap_probability = 0.8
 
