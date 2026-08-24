@@ -37,6 +37,7 @@ class PPOAnyAdapter(PPO):
         weight_decay: float = 0.0,
         joint_encoder_optimization: bool = False,
         separate_wm_updates_history_encoder: bool = False,
+        error_prediction_loss_coef: float = 0.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -54,6 +55,7 @@ class PPOAnyAdapter(PPO):
         self.separate_wm_updates_history_encoder = bool(
             separate_wm_updates_history_encoder
         )
+        self.error_prediction_loss_coef = float(error_prediction_loss_coef)
         self.skip_dagger_update = True
         self.requires_next_observations = True
 
@@ -219,6 +221,22 @@ class PPOAnyAdapter(PPO):
         return (delta ** 2).mean(), stand_ratio
 
     def _synthetic_stand_anchor_loss_from_batch(self, obs_batch):
+        if hasattr(self.actor_critic, "build_synthetic_stand_observation"):
+            stand_obs = self.actor_critic.build_synthetic_stand_observation(
+                obs_batch, self.synthetic_stand_root_height
+            )
+            diagnostics = self.actor_critic.action_diagnostics(stand_obs)
+            self._last_synthetic_stand_metrics = {
+                "synthetic_stand_candidate_delta": float(
+                    diagnostics["candidate_delta"].detach().norm(dim=-1).mean().cpu()
+                ),
+                "synthetic_stand_applied_delta": float(
+                    diagnostics["applied_delta"].detach().norm(dim=-1).mean().cpu()
+                ),
+            }
+            # Demand is exactly zero for a synthetic stand. Penalize the raw
+            # candidate, otherwise the gate would hide a learned fixed bias.
+            return diagnostics["candidate_delta"].square().mean()
         stand_obs = obs_batch.clone()
         base_obs, _ = self.actor_critic.split_obs(stand_obs)
         default_ref = self.actor_critic.default_ref_dof_pos.to(base_obs.device)
@@ -303,6 +321,24 @@ class PPOAnyAdapter(PPO):
         history_ppo_grad_measurements = 0
         history_wm_grad_measurements = 0
         wm_loss_skipped = False
+        mean_error_prediction_loss = 0.0
+        mean_z_e_norm = 0.0
+        mean_tracking_encoder_ppo_grad_norm = 0.0
+        mean_tracking_encoder_aux_grad_norm = 0.0
+        mean_error_predictor_grad_norm = 0.0
+        tracking_grad_measurements = 0
+        dtera_info_keys = (
+            "candidate_delta_l2", "applied_delta_l2",
+            "candidate_mean_abs_delta", "candidate_max_abs_delta",
+            "applied_mean_abs_delta", "applied_max_abs_delta",
+            "wm_uncertainty_mean", "wm_uncertainty_p90", "wm_uncertainty_p95",
+            "tracking_demand_mean", "tracking_demand_p90", "gate_confidence_mean",
+            "safety_factor_mean", "gate_mean", "gate_p10", "gate_p90",
+            "gate_fraction_lt_0_1", "gate_fraction_gt_0_9",
+            "p_base_mean", "p_candidate_mean", "delta_risk_mean", "delta_risk_p95",
+            "synthetic_stand_candidate_delta", "synthetic_stand_applied_delta",
+        )
+        mean_dtera_info = {key: 0.0 for key in dtera_info_keys}
 
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -395,6 +431,8 @@ class PPOAnyAdapter(PPO):
                 mean_tracking_max_abs_delta += adapter_info.get("tracking_max_abs_delta", 0.0)
                 mean_branch_balance_ratio += adapter_info.get("branch_balance_ratio", 0.0)
                 mean_branch_cosine_similarity += adapter_info.get("branch_cosine_similarity", 0.0)
+                for key in dtera_info_keys:
+                    mean_dtera_info[key] += adapter_info.get(key, 0.0)
             if (
                 hasattr(self.actor_critic, "adapter_bias_regularization_loss")
                 and self.adapter_bias_reg_coef > 0.0
@@ -405,8 +443,30 @@ class PPOAnyAdapter(PPO):
                 stand_anchor_loss, stand_sample_ratio = self._stand_anchor_loss_from_batch(obs_batch)
                 loss = loss + self.stand_anchor_coef * stand_anchor_loss
             if self.synthetic_stand_anchor_coef > 0.0:
+                self._last_synthetic_stand_metrics = {}
                 synthetic_stand_anchor_loss = self._synthetic_stand_anchor_loss_from_batch(obs_batch)
                 loss = loss + self.synthetic_stand_anchor_coef * synthetic_stand_anchor_loss
+                for key, value in self._last_synthetic_stand_metrics.items():
+                    mean_dtera_info[key] += value
+
+            control_loss = loss
+            error_prediction_loss = obs_batch.new_zeros(())
+            z_e_norm = obs_batch.new_zeros(())
+            valid_next_mask = (
+                (1.0 - dones_batch.float()) * next_obs_available_batch.float()
+            )
+            if (
+                self.error_prediction_loss_coef > 0.0
+                and hasattr(self.actor_critic, "error_prediction_loss")
+                and bool(torch.any(valid_next_mask).item())
+            ):
+                error_prediction_loss, z_e_norm = self.actor_critic.error_prediction_loss(
+                    obs_batch,
+                    actions_batch,
+                    next_obs_batch,
+                    valid_next_mask,
+                )
+                loss = loss + self.error_prediction_loss_coef * error_prediction_loss
 
             # Everything accumulated so far is the policy-side objective. In
             # joint mode the WM term is backwarded separately first so its
@@ -444,6 +504,22 @@ class PPOAnyAdapter(PPO):
                     history_params,
                 )
                 history_ppo_grad_measurements += 1
+
+            tracking_encoder_ppo_grad_norm = 0.0
+            tracking_encoder_aux_grad_norm = 0.0
+            if hasattr(self.actor_critic, "tracking_error_history_encoder"):
+                tracking_params = tuple(
+                    self.actor_critic.tracking_error_history_encoder.parameters()
+                )
+                tracking_encoder_ppo_grad_norm = self._diagnostic_grad_norm(
+                    control_loss, tracking_params
+                )
+                if error_prediction_loss.requires_grad:
+                    tracking_encoder_aux_grad_norm = self._diagnostic_grad_norm(
+                        self.error_prediction_loss_coef * error_prediction_loss,
+                        tracking_params,
+                    )
+                tracking_grad_measurements += 1
 
             self.ppo_optimizer.zero_grad()
             self.wm_optimizer.zero_grad()
@@ -483,6 +559,11 @@ class PPOAnyAdapter(PPO):
                 self.actor_critic.history_encoder.parameters()
             )
             adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
+            error_predictor_grad_norm = 0.0
+            if hasattr(self.actor_critic, "error_trend_predictor"):
+                error_predictor_grad_norm = self._grad_norm(
+                    self.actor_critic.error_trend_predictor.parameters()
+                )
             if getattr(self.actor_critic, "use_dual_branch_adapter", False):
                 dynamics_branch_grad_norm = self._grad_norm(
                     self.actor_critic.adapter.dynamics_branch.parameters()
@@ -523,6 +604,11 @@ class PPOAnyAdapter(PPO):
             mean_adapter_grad_norm += adapter_grad_norm
             mean_dynamics_branch_grad_norm += dynamics_branch_grad_norm
             mean_tracking_branch_grad_norm += tracking_branch_grad_norm
+            mean_error_prediction_loss += error_prediction_loss.item()
+            mean_z_e_norm += float(z_e_norm.detach().cpu())
+            mean_tracking_encoder_ppo_grad_norm += tracking_encoder_ppo_grad_norm
+            mean_tracking_encoder_aux_grad_norm += tracking_encoder_aux_grad_norm
+            mean_error_predictor_grad_norm += error_predictor_grad_norm
             for key in mean_wm_component_losses:
                 mean_wm_component_losses[key] += wm_component_info.get(key, 0.0)
 
@@ -564,7 +650,18 @@ class PPOAnyAdapter(PPO):
             "mean_abs_delta_action": mean_mean_abs_delta_action / num_updates,
             "surrogate_loss": mean_surrogate_loss / num_updates,
             "value_loss": mean_value_loss / num_updates,
+            "error_prediction_loss": mean_error_prediction_loss / num_updates,
+            "z_e_norm": mean_z_e_norm / num_updates,
+            "tracking_encoder_ppo_grad_norm": (
+                mean_tracking_encoder_ppo_grad_norm / max(tracking_grad_measurements, 1)
+            ),
+            "tracking_encoder_aux_grad_norm": (
+                mean_tracking_encoder_aux_grad_norm / max(tracking_grad_measurements, 1)
+            ),
+            "error_predictor_grad_norm": mean_error_predictor_grad_norm / num_updates,
         }
+        for key, total in mean_dtera_info.items():
+            self.anyadapter_metrics[key] = total / num_updates
         for key, total in mean_wm_component_losses.items():
             value = total / num_updates
             self.anyadapter_metrics[key] = value

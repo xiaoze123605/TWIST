@@ -1,16 +1,20 @@
 """Inference-only branch ablation evaluation for the Dual AnyAdapter.
 
 Loads ONE Dual AnyAdapter checkpoint (a = a_base + adapter_gain * delta) and
-rolls it out three ways by masking which residual branches are added at
+rolls it out with branch masks (and, for DTERA, gate ablations) by changing
+inference-only attributes:
 inference time:
 
+    base_only -> a_base
     full      -> a_base + adapter_gain * (dyn_gain * delta_dyn + err_gain * delta_err)
     dyn_only  -> a_base + adapter_gain * (dyn_gain * delta_dyn)
     err_only  -> a_base + adapter_gain * (err_gain * delta_err)
 
 The mask is applied only through TwistAnyAdapterActorCritic.adapter_branch_mode;
 network weights, the world model, and the optimizer are never touched, so a
-single checkpoint serves all three modes.  Fairness: identical task config,
+single checkpoint serves all modes.  DTERA additionally supports
+full_gate_off/full_demand_only/full_demand_confidence/full_gate. Fairness:
+identical task config,
 checkpoint, seed, motion file, and domain randomization across modes; only the
 branch mask changes (run each mode in a separate process with the same flags).
 
@@ -39,7 +43,14 @@ from legged_gym.envs.g1.g1_mimic_distill import G1MimicDistill
 import torch
 from isaacgym import gymapi
 
-BRANCH_MODES = ("full", "dyn_only", "err_only")
+BRANCH_MODES = ("base_only", "full", "dyn_only", "err_only")
+DTERA_MODES = (
+    "full_gate_off",
+    "full_demand_only",
+    "full_demand_confidence",
+    "full_gate",
+)
+EVAL_MODES = BRANCH_MODES + DTERA_MODES
 
 # Termination reason labels (priority order matches the env's reset semantics).
 REASON_NONE = "none"
@@ -195,6 +206,8 @@ def checkpoint_md5(path: str) -> str:
 
 def combine_branches(actor_critic, delta_dyn, delta_err, mode):
     """Mirror of TwistAnyAdapterActorCritic.action_delta for the dual adapter."""
+    if mode == "base_only":
+        return torch.zeros_like(delta_dyn)
     if mode == "dyn_only":
         return actor_critic.dynamics_branch_gain * delta_dyn
     if mode == "err_only":
@@ -210,7 +223,7 @@ def main() -> None:
     parser.add_argument("--task", type=str, default="g1_stu_anyadapter_dual")
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to the trained Dual AnyAdapter checkpoint (*.pt).")
-    parser.add_argument("--branch_mode", type=str, choices=BRANCH_MODES,
+    parser.add_argument("--branch_mode", type=str, choices=EVAL_MODES,
                         default="full")
     parser.add_argument("--num_envs", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
@@ -260,8 +273,22 @@ def main() -> None:
 
     actor_critic = ppo_runner.get_actor_critic(device=env.device)
     policy = ppo_runner.get_inference_policy(device=env.device)
-    actor_critic.adapter_branch_mode = args.branch_mode
-    print(f"[evaluate_dual_branch] branch mode: {actor_critic.adapter_branch_mode}")
+    dtera_mode_map = {
+        "full_gate_off": ("full", "off"),
+        "full_demand_only": ("full", "demand_only"),
+        "full_demand_confidence": ("full", "demand_confidence"),
+        "full_gate": ("full", "full"),
+    }
+    if args.branch_mode in dtera_mode_map:
+        if not getattr(actor_critic, "is_dtera", False):
+            raise ValueError(f"{args.branch_mode} requires the DTERA task/checkpoint")
+        actor_critic.adapter_branch_mode, actor_critic.gate_mode = dtera_mode_map[
+            args.branch_mode
+        ]
+    else:
+        actor_critic.adapter_branch_mode = args.branch_mode
+    print(f"[evaluate_dual_branch] branch mode: {actor_critic.adapter_branch_mode} "
+          f"gate mode: {getattr(actor_critic, 'gate_mode', 'n/a')}")
 
     obs = env.get_observations()
     if env.cfg.env.normalize_obs:
@@ -287,11 +314,18 @@ def main() -> None:
     mean_roll_err = 0.0
     mean_pitch_err = 0.0
     mean_joint_err = 0.0
+    mean_joint_vel_err = 0.0
+    mean_root_vel_err = 0.0
     mean_keybody_err = 0.0
     mean_dyn_res = 0.0
     mean_err_res = 0.0
     mean_applied_res = 0.0
     max_applied_res = 0.0
+    mean_gate = 0.0
+    mean_feet_slip = 0.0
+    mean_action_rate = 0.0
+    previous_actions = None
+    startup = []
     # Env's own episode logger (extras), weighted by number of resets per step.
     extras_metric_sums = {}
     extras_metric_weight = 0.0
@@ -303,12 +337,47 @@ def main() -> None:
             normalized_obs = obs.detach()
         actions = policy(normalized_obs)
         with torch.inference_mode():
-            delta_dyn, delta_err = actor_critic.get_adapter_delta_components(normalized_obs)
-            applied = combine_branches(actor_critic, delta_dyn, delta_err,
-                                       args.branch_mode)
+            base_action = actor_critic.base_action(normalized_obs)
+            if hasattr(actor_critic, "action_diagnostics"):
+                diagnostics = actor_critic.action_diagnostics(
+                    normalized_obs, base_action=base_action
+                )
+                delta_dyn = diagnostics["delta_dyn"]
+                delta_err = diagnostics["delta_err"]
+                candidate = diagnostics["candidate_delta"]
+                applied = actor_critic.adapter_gain * diagnostics["applied_delta"]
+                gate = diagnostics["gate"]
+            else:
+                delta_dyn, delta_err = actor_critic.get_adapter_delta_components(normalized_obs)
+                candidate = combine_branches(actor_critic, delta_dyn, delta_err,
+                                             args.branch_mode)
+                applied = actor_critic.adapter_gain * candidate
+                gate = torch.zeros(candidate.shape[0], device=candidate.device) \
+                    if args.branch_mode == "base_only" else torch.ones(candidate.shape[0], device=candidate.device)
             dyn_res = torch.norm(delta_dyn, dim=-1).mean()
             err_res = torch.norm(delta_err, dim=-1).mean()
             applied_res = torch.norm(applied, dim=-1).mean()
+
+            if step < 50:
+                startup.append({
+                    "step": step,
+                    "roll_mean": float(env.roll.mean().cpu()),
+                    "roll_abs_max": float(env.roll.abs().max().cpu()),
+                    "pitch_mean": float(env.pitch.mean().cpu()),
+                    "pitch_abs_max": float(env.pitch.abs().max().cpu()),
+                    "root_height_mean": float(env.root_states[:, 2].mean().cpu()),
+                    "base_action_mean_abs": float(base_action.abs().mean().cpu()),
+                    "base_action_max_abs": float(base_action.abs().max().cpu()),
+                    "delta_dyn_mean_abs": float(delta_dyn.abs().mean().cpu()),
+                    "delta_dyn_max_abs": float(delta_dyn.abs().max().cpu()),
+                    "delta_err_mean_abs": float(delta_err.abs().mean().cpu()),
+                    "delta_err_max_abs": float(delta_err.abs().max().cpu()),
+                    "candidate_delta_mean_abs": float(candidate.abs().mean().cpu()),
+                    "candidate_delta_max_abs": float(candidate.abs().max().cpu()),
+                    "applied_delta_mean_abs": float(applied.abs().mean().cpu()),
+                    "applied_delta_max_abs": float(applied.abs().max().cpu()),
+                    "gate_mean": float(gate.mean().cpu()),
+                })
 
         obs, _, rews, dones, infos = env.step(actions.detach())
 
@@ -318,9 +387,17 @@ def main() -> None:
         # Tracking errors from the env's current state vs reference motion.
         root_pos_err = torch.norm(env.root_states[:, :3] - env._ref_root_pos, dim=-1)
         roll_ref, pitch_ref, _ = euler_from_quaternion(env._ref_root_rot)
-        roll_err = torch.abs(env.roll - roll_ref)
-        pitch_err = torch.abs(env.pitch - pitch_ref)
+        roll_err = torch.abs(torch.atan2(
+            torch.sin(env.roll - roll_ref), torch.cos(env.roll - roll_ref)
+        ))
+        pitch_err = torch.abs(torch.atan2(
+            torch.sin(env.pitch - pitch_ref), torch.cos(env.pitch - pitch_ref)
+        ))
         joint_err = torch.abs(env.dof_pos - env._ref_dof_pos).mean(dim=-1)
+        joint_vel_err = torch.abs(env.dof_vel - env._ref_dof_vel).mean(dim=-1)
+        root_vel_err = torch.norm(
+            env.root_states[:, 7:10] - env._ref_root_vel, dim=-1
+        )
         keybody_err = torch.norm(
             env.rigid_body_states[:, env._key_body_ids, 0:3]
             - env._ref_body_pos[:, env._key_body_ids],
@@ -332,6 +409,8 @@ def main() -> None:
         mean_roll_err += float(roll_err.mean().detach().cpu())
         mean_pitch_err += float(pitch_err.mean().detach().cpu())
         mean_joint_err += float(joint_err.mean().detach().cpu())
+        mean_joint_vel_err += float(joint_vel_err.mean().detach().cpu())
+        mean_root_vel_err += float(root_vel_err.mean().detach().cpu())
         mean_keybody_err += float(keybody_err.mean().detach().cpu())
         mean_dyn_res += float(dyn_res.detach().cpu())
         mean_err_res += float(err_res.detach().cpu())
@@ -339,6 +418,17 @@ def main() -> None:
         max_applied_res = max(
             max_applied_res, float(torch.norm(applied, dim=-1).max().detach().cpu())
         )
+        mean_gate += float(gate.mean().detach().cpu())
+        feet_vel = env.rigid_body_states[:, env.feet_indices, 7:10]
+        contacts = (env.contact_forces[:, env.feet_indices, 2] > 5.0).float()
+        mean_feet_slip += float(
+            (feet_vel[:, :, :2].norm(dim=-1) * contacts).mean().detach().cpu()
+        )
+        if previous_actions is not None:
+            mean_action_rate += float(
+                (actions - previous_actions).norm(dim=-1).mean().detach().cpu()
+            )
+        previous_actions = actions.detach().clone()
 
         done_mask = dones.bool()
         if done_mask.any():
@@ -377,9 +467,14 @@ def main() -> None:
             "checkpoint_md5": checkpoint_md5(args.checkpoint),
             "branch_mode": args.branch_mode,
             "branch_mask": {
+                "base_only": "0",
                 "full": "delta_dyn + delta_err",
                 "dyn_only": "delta_dyn",
                 "err_only": "delta_err",
+                "full_gate_off": "(delta_dyn + delta_err), gate=1",
+                "full_demand_only": "(delta_dyn + delta_err), gate=D",
+                "full_demand_confidence": "(delta_dyn + delta_err), gate=D*C",
+                "full_gate": "(delta_dyn + delta_err), gate=D*C*S",
             }[args.branch_mode],
             "adapter_gain": float(actor_critic.adapter_gain),
             "dynamics_branch_gain": float(actor_critic.dynamics_branch_gain),
@@ -407,6 +502,8 @@ def main() -> None:
             "mean_roll_error_rad": mean_roll_err / steps,
             "mean_pitch_error_rad": mean_pitch_err / steps,
             "mean_joint_pos_error_rad": mean_joint_err / steps,
+            "mean_joint_vel_error_rad_s": mean_joint_vel_err / steps,
+            "mean_root_vel_error_m_s": mean_root_vel_err / steps,
             "mean_keybody_pos_error_m": mean_keybody_err / steps,
             # Reward-component metrics from the env's own episode logger.
             "env_episode_reward_components": {
@@ -426,7 +523,13 @@ def main() -> None:
             "mean_delta_err_l2": mean_err_res / steps,
             "mean_applied_residual_l2": mean_applied_res / steps,
             "max_applied_residual_l2": max_applied_res,
+            "mean_gate": mean_gate / steps,
         },
+        "control": {
+            "mean_feet_slip_m_s": mean_feet_slip / steps,
+            "mean_action_rate_l2": mean_action_rate / max(steps - 1, 1),
+        },
+        "startup_first_50_steps": startup,
     }
 
     json_path = out_dir / f"{args.branch_mode}.json"
@@ -446,6 +549,8 @@ def main() -> None:
         "mean_roll_error_rad": results["tracking"]["mean_roll_error_rad"],
         "mean_pitch_error_rad": results["tracking"]["mean_pitch_error_rad"],
         "mean_joint_pos_error_rad": results["tracking"]["mean_joint_pos_error_rad"],
+        "mean_joint_vel_error_rad_s": results["tracking"]["mean_joint_vel_error_rad_s"],
+        "mean_root_vel_error_m_s": results["tracking"]["mean_root_vel_error_m_s"],
         "mean_keybody_pos_error_m": results["tracking"]["mean_keybody_pos_error_m"],
         "fall_count": fall_count,
         "timeout_count": timeout_count,
@@ -454,6 +559,9 @@ def main() -> None:
         "mean_delta_err_l2": results["residual"]["mean_delta_err_l2"],
         "mean_applied_residual_l2": results["residual"]["mean_applied_residual_l2"],
         "max_applied_residual_l2": results["residual"]["max_applied_residual_l2"],
+        "mean_gate": results["residual"]["mean_gate"],
+        "mean_feet_slip_m_s": results["control"]["mean_feet_slip_m_s"],
+        "mean_action_rate_l2": results["control"]["mean_action_rate_l2"],
     }
     for label in reason_counts:
         flat[f"termination_{label}"] = reason_counts[label]

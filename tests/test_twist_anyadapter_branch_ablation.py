@@ -226,6 +226,15 @@ class DualBranchAblationTest(unittest.TestCase):
         ))
         self.assertTrue(torch.equal(delta_full, delta_full_again))
 
+    def test_base_only_is_exact_frozen_actor(self):
+        actor = make_dual_actor(self.base_actor_path, branch_mode="base_only")
+        enable_branch_outputs(actor)
+        obs = torch.randn(7, TOTAL_OBS_DIM)
+        self.assertTrue(torch.equal(actor.actor_mean(obs), actor.base_action(obs)))
+        self.assertTrue(torch.equal(
+            actor.action_delta(obs), torch.zeros(7, NUM_ACTIONS)
+        ))
+
     def test_world_model_and_reg_loss_ignore_branch_mask(self):
         torch.manual_seed(5)
         actor = make_dual_actor(self.base_actor_path, branch_mode="dyn_only")

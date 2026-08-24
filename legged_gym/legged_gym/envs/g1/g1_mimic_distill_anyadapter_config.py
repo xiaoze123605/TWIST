@@ -327,6 +327,110 @@ class G1MimicStuAnyAdapterDualCfgPPO(G1MimicStuAnyAdapterV4CfgPPO):
         adapter_gain = 1.0
 
 
+# ======================== DTERA Uncertainty/Risk-Gated Dual Adapter ========================
+
+class G1MimicStuAnyAdapterDTERACfg(G1MimicStuAnyAdapterV4Cfg):
+    """Independent DTERA task; existing Dual/V4-V6 configurations are unchanged."""
+
+    class env(G1MimicStuAnyAdapterV4Cfg.env):
+        use_anyadapter = True
+        normalize_obs = False
+        base_obs_dim = 1155
+
+        anyadapter_history_len = 20
+        anyadapter_state_indices = ANYADAPTER_STATE_INDICES
+        anyadapter_hist_state_dim = 51
+        anyadapter_history_frame_dim = 74
+        anyadapter_fill_history_on_reset = True
+
+        use_tracking_error_history = True
+        tracking_error_history_len = 20
+        tracking_error_frame_dim = 53
+
+        anyadapter_context_dim = 0
+        anyadapter_added_obs_dim = 20 * 74 + 20 * 53
+        anyadapter_final_policy_obs_dim = 1155 + anyadapter_added_obs_dim
+
+
+class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
+    class runner(G1MimicPrivCfgPPO.runner):
+        policy_class_name = "TwistDTERAActorCritic"
+        algorithm_class_name = "PPODTERA"
+        runner_class_name = "OnPolicyRunnerMimic"
+        experiment_name = "g1_twist_dtera_gate_v1"
+        run_name = ""
+        resume = False
+        save_interval = 500
+
+    class policy(G1MimicPrivCfgPPO.policy):
+        base_actor_jit_path = "/home/hank/TWIST（anyadapter）/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt"
+        base_obs_dim = 1155
+        base_single_obs_dim = 105
+        base_history_len = 10
+
+        use_dual_branch_adapter = True
+        use_tracking_error_adapter_input = True
+        use_tracking_error_history = True
+        use_error_trend_predictor = True
+        use_world_model_ensemble = True
+        use_adaptive_residual_gate = True
+
+        history_len = 20
+        hist_state_dim = 51
+        history_frame_dim = 74
+        wm_target_indices = ANYADAPTER_STATE_INDICES
+        latent_dim = 32
+        history_policy_grad_scale = 0.0
+
+        tracking_history_len = 20
+        tracking_error_frame_dim = 53
+        tracking_latent_dim = 32
+        tracking_history_policy_grad_scale = 0.25
+
+        adapter_hidden_dims = [128, 128]
+        world_model_hidden_dims = [256, 256]
+        error_predictor_hidden_dims = [128, 128]
+        risk_predictor_hidden_dims = [128, 128]
+        critic_hidden_dims = [512, 256, 128]
+        activation = "elu"
+        use_conv_history = True
+        default_ref_dof_pos = DEFAULT_REF_DOF_POS
+
+        dynamics_branch_gain = 1.0
+        tracking_branch_gain = 1.0
+        dynamics_action_delta_scale = 0.03
+        tracking_action_delta_scale = 0.03
+        adapter_gain = 1.0
+        adapter_branch_mode = "full"
+        init_noise_std = 0.05
+        freeze_base = True
+
+        world_model_ensemble_size = 3
+        tracking_error_scales = [0.35, 2.0, 1.0, 0.35, 0.08]
+        gate_demand_k = 1.0
+        gate_confidence_k = 1.0
+        gate_risk_k = 5.0
+        gate_mode = "full"
+        wm_variance_ema_decay = 0.99
+
+    class algorithm(G1MimicPrivCfgPPO.algorithm):
+        joint_encoder_optimization = True
+        world_model_loss_coef = 0.10
+        error_prediction_loss_coef = 0.05
+        adapter_reg_coef = 0.02
+        adapter_bias_reg_coef = 0.10
+        stand_anchor_coef = 0.0
+        synthetic_stand_anchor_coef = 2.0
+        synthetic_stand_root_height = 0.793
+        world_model_loss_type = "smooth_l1"
+        weight_decay = 1e-4
+
+        risk_horizon = 10
+        risk_pos_weight = 5.0
+        world_model_bootstrap = True
+        world_model_bootstrap_probability = 0.8
+
+
 # ======================== V5 Heading-Aware, Bias-Controlled ========================
 
 class G1MimicStuAnyAdapterV5Cfg(G1MimicStuAnyAdapterV4Cfg):

@@ -44,7 +44,7 @@ import builtins
 
 
 import numpy as np
-from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter, PPOAny2Track
+from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter, PPOAny2Track, PPODTERA
 from rsl_rl.modules import *
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.env import VecEnv
@@ -150,6 +150,8 @@ class OnPolicyRunnerMimic:
         hist_state_dim = self.policy_cfg.get("hist_state_dim", None)
         history_frame_dim = self.policy_cfg.get("history_frame_dim", None)
         adapter_context_dim = self.policy_cfg.get("adapter_context_dim", 0)
+        tracking_history_len = self.policy_cfg.get("tracking_history_len", 0)
+        tracking_error_frame_dim = self.policy_cfg.get("tracking_error_frame_dim", 0)
         action_delta_scale = self.policy_cfg.get("action_delta_scale", None)
         adapter_gain = self.policy_cfg.get("adapter_gain", None)
         use_tracking_error_adapter_input = self.policy_cfg.get("use_tracking_error_adapter_input", False)
@@ -171,6 +173,7 @@ class OnPolicyRunnerMimic:
             expected_full_obs_dim = (
                 int(base_obs_dim)
                 + anyadapter_history_dim
+                + int(tracking_history_len) * int(tracking_error_frame_dim)
                 + int(adapter_context_dim)
             )
 
@@ -185,6 +188,8 @@ class OnPolicyRunnerMimic:
         builtins.print(f"[AnyAdapter] cfg.policy.history_len: {history_len}")
         builtins.print(f"[AnyAdapter] cfg.policy.hist_state_dim: {hist_state_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.history_frame_dim: {history_frame_dim}")
+        builtins.print(f"[AnyAdapter] cfg.policy.tracking_history_len: {tracking_history_len}")
+        builtins.print(f"[AnyAdapter] cfg.policy.tracking_error_frame_dim: {tracking_error_frame_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.adapter_context_dim: {adapter_context_dim}")
         builtins.print(f"[AnyAdapter] cfg.policy.action_delta_scale: {action_delta_scale}")
         builtins.print(f"[AnyAdapter] cfg.policy.adapter_gain: {adapter_gain}")
@@ -437,6 +442,46 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter surrogate:':>{pad}} {anyadapter_metrics.get('surrogate_loss', locs['mean_surrogate_loss']):.6f}\n"""
                 f"""{'AnyAdapter value loss:':>{pad}} {anyadapter_metrics.get('value_loss', locs['mean_value_loss']):.6f}\n"""
             )
+            dtera_metric_labels = {
+                "error_prediction_loss": "DTERA error pred loss",
+                "tracking_encoder_ppo_grad_norm": "DTERA error enc PPO grad",
+                "tracking_encoder_aux_grad_norm": "DTERA error enc aux grad",
+                "error_predictor_grad_norm": "DTERA error pred grad",
+                "z_e_norm": "DTERA z_e norm",
+                "wm_uncertainty_mean": "DTERA WM uncertainty",
+                "wm_uncertainty_p90": "DTERA WM uncertainty p90",
+                "wm_uncertainty_p95": "DTERA WM uncertainty p95",
+                "tracking_demand_mean": "DTERA demand mean",
+                "tracking_demand_p90": "DTERA demand p90",
+                "gate_confidence_mean": "DTERA confidence mean",
+                "safety_factor_mean": "DTERA safety mean",
+                "gate_mean": "DTERA gate mean",
+                "gate_p10": "DTERA gate p10",
+                "gate_p90": "DTERA gate p90",
+                "gate_fraction_lt_0_1": "DTERA gate frac <.1",
+                "gate_fraction_gt_0_9": "DTERA gate frac >.9",
+                "risk_loss": "DTERA risk loss",
+                "risk_positive_ratio": "DTERA risk positive",
+                "p_base_mean": "DTERA p_base",
+                "p_candidate_mean": "DTERA p_candidate",
+                "delta_risk_mean": "DTERA delta risk",
+                "delta_risk_p95": "DTERA delta risk p95",
+                "candidate_delta_l2": "DTERA candidate L2",
+                "applied_delta_l2": "DTERA applied L2",
+                "candidate_mean_abs_delta": "DTERA candidate mean",
+                "candidate_max_abs_delta": "DTERA candidate max",
+                "applied_mean_abs_delta": "DTERA applied mean",
+                "applied_max_abs_delta": "DTERA applied max",
+                "synthetic_stand_candidate_delta": "DTERA stand candidate",
+                "synthetic_stand_applied_delta": "DTERA stand applied",
+            }
+            dtera_lines = []
+            for key, label in dtera_metric_labels.items():
+                if key in anyadapter_metrics:
+                    value = anyadapter_metrics[key]
+                    wandb_dict[f"AnyAdapter/{key}"] = value
+                    dtera_lines.append(f"{label:>{pad}} {value:.6e}\n")
+            anyadapter_log_string += "".join(dtera_lines)
 
         wandb_dict['Adaptation/hist_latent_loss'] = locs['mean_hist_latent_loss']
         wandb_dict['Adaptation/priv_reg_loss'] = locs['mean_priv_reg_loss']
@@ -531,6 +576,8 @@ class OnPolicyRunnerMimic:
             state_dict['ppo_optimizer_state_dict'] = self.alg.ppo_optimizer.state_dict()
         if hasattr(self.alg, "wm_optimizer"):
             state_dict['wm_optimizer_state_dict'] = self.alg.wm_optimizer.state_dict()
+        if hasattr(self.alg, "risk_optimizer"):
+            state_dict['risk_optimizer_state_dict'] = self.alg.risk_optimizer.state_dict()
         torch.save(state_dict, path)
 
     def load(self, path, load_optimizer=True):
@@ -572,6 +619,12 @@ class OnPolicyRunnerMimic:
                 # old run's weight_decay=1e-4 that collapsed the encoder/WM.
                 # Re-apply the constructor's wd=0 policy after loading.
                 for group in self.alg.wm_optimizer.param_groups:
+                    group['weight_decay'] = 0.0
+            if hasattr(self.alg, "risk_optimizer") and 'risk_optimizer_state_dict' in loaded_dict:
+                self.alg.risk_optimizer.load_state_dict(
+                    loaded_dict['risk_optimizer_state_dict']
+                )
+                for group in self.alg.risk_optimizer.param_groups:
                     group['weight_decay'] = 0.0
         # self.current_learning_iteration = loaded_dict['iter']
         self.current_learning_iteration = int(os.path.basename(path).split("_")[1].split(".")[0])

@@ -364,9 +364,9 @@ class TwistAnyAdapterActorCritic(nn.Module):
         # adapter_regularization_loss (which reads the raw branch outputs) are
         # all left untouched.  "full" reproduces the default dual forward.
         self.adapter_branch_mode = str(adapter_branch_mode)
-        if self.adapter_branch_mode not in ("full", "dyn_only", "err_only"):
+        if self.adapter_branch_mode not in ("base_only", "full", "dyn_only", "err_only"):
             raise ValueError(
-                "adapter_branch_mode must be one of 'full', 'dyn_only', "
+                "adapter_branch_mode must be one of 'base_only', 'full', 'dyn_only', "
                 f"'err_only', got {self.adapter_branch_mode!r}."
             )
         self.use_tracking_error_adapter_input = bool(use_tracking_error_adapter_input)
@@ -610,6 +610,8 @@ class TwistAnyAdapterActorCritic(nn.Module):
         detach_history: bool = True,
         base_action: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if self.adapter_branch_mode == "base_only":
+            return observations.new_zeros(observations.shape[0], self.num_actions)
         delta_dyn, delta_err = self.action_delta_components(
             observations,
             detach_history=detach_history,
@@ -629,6 +631,8 @@ class TwistAnyAdapterActorCritic(nn.Module):
 
     def actor_mean(self, observations: torch.Tensor) -> torch.Tensor:
         base_action = self.base_action(observations)
+        if self.adapter_branch_mode == "base_only":
+            return base_action
         delta = self.action_delta(
             observations,
             detach_history=True,

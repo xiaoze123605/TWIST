@@ -42,6 +42,7 @@ class RolloutStorage:
             self.actions = None
             self.rewards = None
             self.dones = None
+            self.timeouts = None
             self.values = None
             self.actions_log_prob = None
             self.action_mean = None
@@ -70,6 +71,7 @@ class RolloutStorage:
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.dones = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
+        self.timeouts = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
 
         # For PPO
         self.actions_log_prob = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
@@ -101,6 +103,10 @@ class RolloutStorage:
         self.actions[self.step].copy_(transition.actions)
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
+        if transition.timeouts is None:
+            self.timeouts[self.step].zero_()
+        else:
+            self.timeouts[self.step].copy_(transition.timeouts.view(-1, 1))
         self.values[self.step].copy_(transition.values)
         self.actions_log_prob[self.step].copy_(transition.actions_log_prob.view(-1, 1))
         self.mu[self.step].copy_(transition.action_mean)
@@ -129,6 +135,7 @@ class RolloutStorage:
     def clear(self):
         self.step = 0
         self.next_observations_available.zero_()
+        self.timeouts.zero_()
 
     def compute_returns(self, last_values, gamma, lam):
         advantage = 0

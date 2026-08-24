@@ -75,7 +75,9 @@ class TargetSafetyFilterTest(unittest.TestCase):
 
     def test_policy_observation_contract(self):
         frame_dim = 31 + 3 + 2 + 3 * 23
-        self.assertEqual(POLICY_OBS_DIM, 31 + frame_dim + 10 * frame_dim)
+        # One current 105-D frame plus ten 105-D history frames.  The 31-D
+        # mimic reference is already included in frame_dim.
+        self.assertEqual(POLICY_OBS_DIM, 11 * frame_dim)
 
 
 if __name__ == "__main__":
