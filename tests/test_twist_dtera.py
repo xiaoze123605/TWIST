@@ -114,6 +114,25 @@ class DTERATest(unittest.TestCase):
             (3, 3, HIST_STATE_DIM),
         )
 
+    def test_tracking_latent_is_scale_bounded_and_keeps_gradient(self):
+        actor = make_actor(self.base_path)
+        history = (
+            1.0e4 * torch.randn(6, HISTORY_LEN, ERROR_FRAME_DIM)
+        ).requires_grad_()
+        latent = actor.tracking_error_history_encoder(history)
+        expected_norm = latent.new_tensor(actor.tracking_latent_dim).sqrt()
+        self.assertTrue(torch.allclose(
+            latent.norm(dim=-1),
+            expected_norm.expand(latent.shape[0]),
+            rtol=2e-3,
+            atol=2e-3,
+        ))
+        weights = torch.arange(
+            1, actor.tracking_latent_dim + 1, dtype=latent.dtype
+        )
+        (latent * weights).mean().backward()
+        self.assertGreater(history.grad.norm().item(), 0.0)
+
     def test_zero_init_and_base_only(self):
         obs = torch.randn(5, TOTAL_OBS_DIM)
         actor = make_actor(self.base_path)

@@ -679,6 +679,7 @@ class PPOAnyAdapter(PPO):
                 self.actor_critic.update_std(std_coef)
 
         self.anyadapter_metrics = {
+            "ppo_learning_rate": float(self.ppo_optimizer.param_groups[0]["lr"]),
             "world_model_loss": mean_wm_loss / num_updates,
             "world_model_loss_skipped": float(wm_loss_skipped),
             "adapter_delta_l2": mean_adapter_delta_l2 / num_updates,

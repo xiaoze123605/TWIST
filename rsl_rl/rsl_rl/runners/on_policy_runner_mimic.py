@@ -30,6 +30,7 @@
 
 import time
 import os
+import json
 from collections import deque
 import statistics
 from rich import print
@@ -319,15 +320,34 @@ class OnPolicyRunnerMimic:
             learn_time = stop - start
             if self.log_dir is not None:
                 self.log(locals())
-            if it < 2500:
-                if it % self.save_interval == 0:
-                    self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
-            elif it < 5000:
-                if it % (2*self.save_interval) == 0:
-                    self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
+            completed_iteration = it + 1
+            if completed_iteration < 2500:
+                if completed_iteration % self.save_interval == 0:
+                    self.save(
+                        os.path.join(
+                            self.log_dir,
+                            'model_{}.pt'.format(completed_iteration),
+                        ),
+                        iteration=completed_iteration,
+                    )
+            elif completed_iteration < 5000:
+                if completed_iteration % (2*self.save_interval) == 0:
+                    self.save(
+                        os.path.join(
+                            self.log_dir,
+                            'model_{}.pt'.format(completed_iteration),
+                        ),
+                        iteration=completed_iteration,
+                    )
             else:
-                if it % (5*self.save_interval) == 0:
-                    self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
+                if completed_iteration % (5*self.save_interval) == 0:
+                    self.save(
+                        os.path.join(
+                            self.log_dir,
+                            'model_{}.pt'.format(completed_iteration),
+                        ),
+                        iteration=completed_iteration,
+                    )
             ep_infos.clear()
 
         # Keep the final checkpoint name aligned with the completed iteration.
@@ -447,6 +467,7 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter value loss:':>{pad}} {anyadapter_metrics.get('value_loss', locs['mean_value_loss']):.6f}\n"""
             )
             dtera_metric_labels = {
+                "ppo_learning_rate": "DTERA PPO learning rate",
                 "error_prediction_loss": "DTERA error pred loss",
                 "tracking_encoder_ppo_grad_norm": "DTERA error enc PPO grad",
                 "tracking_encoder_aux_grad_norm": "DTERA error enc aux grad",
@@ -530,6 +551,21 @@ class OnPolicyRunnerMimic:
             # wandb_dict['Train/mean_episode_length/time', statistics.mean(locs['lenbuffer']), self.tot_time)
 
         wandb.log(wandb_dict, step=locs['it'])
+        if self.log_dir is not None:
+            json_record = {
+                "iteration": int(locs["it"]),
+                "completed_updates": int(locs["it"]) + 1,
+            }
+            for key, value in wandb_dict.items():
+                if isinstance(value, torch.Tensor):
+                    if value.numel() != 1:
+                        continue
+                    value = value.detach().cpu().item()
+                if isinstance(value, (int, float, bool, np.number)):
+                    json_record[key] = float(value)
+            metrics_path = os.path.join(self.log_dir, "train_metrics.jsonl")
+            with open(metrics_path, "a", encoding="utf-8") as metrics_file:
+                metrics_file.write(json.dumps(json_record, sort_keys=True) + "\n")
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 
@@ -579,12 +615,17 @@ class OnPolicyRunnerMimic:
                        f"""{'ETA:':>{pad}} {mins:.0f} mins {secs:.1f} s\n""")
         builtins.print(log_string)
 
-    def save(self, path, infos=None):
+    def save(self, path, infos=None, iteration=None):
+        saved_iteration = (
+            self.current_learning_iteration
+            if iteration is None
+            else int(iteration)
+        )
         if self.normalize_obs:
             state_dict = {
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'optimizer_state_dict': self.alg.optimizer.state_dict(),
-            'iter': self.current_learning_iteration,
+            'iter': saved_iteration,
             'normalizer': self.normalizer,
             'critic_normalizer': self.critic_normalizer,
             'infos': infos,
@@ -593,7 +634,7 @@ class OnPolicyRunnerMimic:
             state_dict = {
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'optimizer_state_dict': self.alg.optimizer.state_dict(),
-            'iter': self.current_learning_iteration,
+            'iter': saved_iteration,
             'infos': infos,
             }
         if hasattr(self.alg, "ppo_optimizer"):
@@ -608,6 +649,15 @@ class OnPolicyRunnerMimic:
         print("*" * 80)
         print("Loading model from {}...".format(path))
         loaded_dict = torch.load(path, map_location=self.device)
+        filename_iteration = int(
+            os.path.basename(path).split("_")[1].split(".")[0]
+        )
+        # Older checkpoints were written while
+        # current_learning_iteration stayed at zero inside the loop.  Preserve
+        # their established filename-based resume behavior, while new
+        # checkpoints carry the exact completed-update count in ``iter``.
+        if int(loaded_dict.get("iter", 0)) == 0 and filename_iteration > 0:
+            loaded_dict["iter"] = filename_iteration
         if hasattr(self.alg.actor_critic, 'base_actor'):
             current_base_state = self.alg.actor_critic.base_actor.state_dict()
             checkpoint_state = loaded_dict['model_state_dict']
@@ -652,8 +702,9 @@ class OnPolicyRunnerMimic:
                 )
                 for group in self.alg.risk_optimizer.param_groups:
                     group['weight_decay'] = 0.0
-        # self.current_learning_iteration = loaded_dict['iter']
-        self.current_learning_iteration = int(os.path.basename(path).split("_")[1].split(".")[0])
+        self.current_learning_iteration = int(
+            loaded_dict.get("iter", filename_iteration)
+        )
         self.env.global_counter = self.current_learning_iteration * 24
         self.env.total_env_steps_counter = self.current_learning_iteration * 24
         print("*" * 80)

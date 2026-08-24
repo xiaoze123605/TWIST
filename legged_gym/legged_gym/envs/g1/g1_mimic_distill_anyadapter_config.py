@@ -423,6 +423,12 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         wm_variance_ema_decay = 0.99
 
     class algorithm(G1MimicPrivCfgPPO.algorithm):
+        # With fixed exploration std and residual warm-up, policy KL is very
+        # small early on.  The inherited adaptive schedule therefore ramps
+        # the shared PPO/tracking-aux optimizer from 2e-4 toward 1e-2 and
+        # collapses the tracking branch into tanh saturation.
+        schedule = "fixed"
+        learning_rate = 2e-4
         entropy_coef = 0.0
         std_schedule = [0.05, 0.05, 0, 1]
         fixed_action_std = 0.05

@@ -169,6 +169,13 @@ class DualAnyAdapterDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(config.policy.history_policy_grad_scale, 0.10)
         self.assertIs(config.algorithm.joint_encoder_optimization, True)
 
+    def test_dtera_uses_fixed_ppo_learning_rate_schedule(self):
+        config_module = load_config_with_minimal_base_classes()
+        config = config_module.G1MimicStuAnyAdapterDTERACfgPPO()
+
+        self.assertEqual(config.algorithm.schedule, "fixed")
+        self.assertAlmostEqual(config.algorithm.learning_rate, 2e-4)
+
     def test_history_encoder_is_owned_by_joint_wm_optimizer(self):
         actor = make_actor(self.base_actor_path, history_policy_grad_scale=0.10)
         algorithm = PPOAnyAdapter(object(), actor, joint_encoder_optimization=True)

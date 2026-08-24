@@ -21,6 +21,16 @@ from .actor_critic_twist_anyadapter import (
 class TrackingErrorHistoryEncoder(HistoryEncoder):
     """Independent encoder for the tracking-error history H_e."""
 
+    def forward(self, history: torch.Tensor) -> torch.Tensor:
+        # The tracking encoder is optimized by both PPO and the error-trend
+        # auxiliary loss.  Its unconstrained latent scale can otherwise grow
+        # without changing either downstream objective, eventually driving
+        # the residual branch's tanh fully into saturation.  Parameter-free
+        # LayerNorm fixes that scale ambiguity without adding trainable state
+        # or changing the latent dimension/checkpoint layout.
+        latent = super().forward(history)
+        return F.layer_norm(latent, (latent.shape[-1],))
+
 
 class TrackingResidualBranchWithHistory(nn.Module):
     def __init__(
