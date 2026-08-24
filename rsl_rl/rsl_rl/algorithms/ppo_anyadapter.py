@@ -373,6 +373,7 @@ class PPOAnyAdapter(PPO):
             "demand_confidence_gate_mean", "full_diagnostic_gate_mean",
             "residual_warmup_factor", "dyn_saturation_fraction",
             "err_saturation_fraction", "candidate_saturation_fraction",
+            "dynamics_output_bias_norm", "tracking_output_bias_norm",
             "gate_fraction_lt_0_1", "gate_fraction_gt_0_9",
             "p_base_mean", "p_candidate_mean", "delta_risk_mean", "delta_risk_p95",
             "synthetic_stand_candidate_delta", "synthetic_stand_applied_delta",

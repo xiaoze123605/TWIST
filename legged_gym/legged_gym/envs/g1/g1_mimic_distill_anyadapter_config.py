@@ -420,6 +420,7 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         gate_mode = "demand_only"
         confidence_gate_strength = 0.0
         residual_warmup_iterations = 1000
+        freeze_residual_output_bias = True
         wm_variance_ema_decay = 0.99
 
     class algorithm(G1MimicPrivCfgPPO.algorithm):

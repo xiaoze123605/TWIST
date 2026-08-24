@@ -489,6 +489,8 @@ class OnPolicyRunnerMimic:
                 "dyn_saturation_fraction": "DTERA dyn saturation",
                 "err_saturation_fraction": "DTERA err saturation",
                 "candidate_saturation_fraction": "DTERA candidate saturation",
+                "dynamics_output_bias_norm": "DTERA dyn output bias norm",
+                "tracking_output_bias_norm": "DTERA err output bias norm",
                 "gate_mean": "DTERA gate mean",
                 "gate_p10": "DTERA gate p10",
                 "gate_p90": "DTERA gate p90",

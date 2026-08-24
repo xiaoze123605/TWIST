@@ -182,6 +182,7 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         gate_mode: str = "demand_only",
         confidence_gate_strength: float = 0.0,
         residual_warmup_iterations: int = 1000,
+        freeze_residual_output_bias: bool = True,
         wm_variance_ema_decay: float = 0.99,
         base_single_obs_dim: int = 105,
         base_history_len: int = 10,
@@ -222,6 +223,7 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         self.gate_mode = str(gate_mode)
         self.confidence_gate_strength = float(confidence_gate_strength)
         self.residual_warmup_iterations = int(residual_warmup_iterations)
+        self.freeze_residual_output_bias = bool(freeze_residual_output_bias)
         self.wm_variance_ema_decay = float(wm_variance_ema_decay)
         self.base_single_obs_dim = int(base_single_obs_dim)
         self.base_history_len = int(base_history_len)
@@ -255,6 +257,17 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             dynamics_delta_scale=dynamics_action_delta_scale,
             tracking_delta_scale=tracking_action_delta_scale,
         )
+        if self.freeze_residual_output_bias:
+            for branch in (
+                self.adapter.dynamics_branch,
+                self.adapter.tracking_branch,
+            ):
+                output_layer = [
+                    module
+                    for module in branch.net.modules()
+                    if isinstance(module, nn.Linear)
+                ][-1]
+                output_layer.bias.requires_grad_(False)
         target_dim = (
             len(self.wm_target_indices)
             if self.wm_target_indices is not None
@@ -598,6 +611,15 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         flat = tensor.detach().reshape(-1)
         return float(flat.mean().cpu()), float(flat.abs().max().cpu())
 
+    @staticmethod
+    def _output_bias_norm(branch):
+        output_layer = [
+            module
+            for module in branch.net.modules()
+            if isinstance(module, nn.Linear)
+        ][-1]
+        return float(output_layer.bias.detach().norm().cpu())
+
     def adapter_regularization_loss(self, observations) -> Tuple[torch.Tensor, dict]:
         diag = self.action_diagnostics(observations)
         candidate = diag["candidate_delta"]
@@ -664,6 +686,12 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             "err_saturation_fraction": float(err_saturation.detach().cpu()),
             "candidate_saturation_fraction": float(
                 candidate_saturation.detach().cpu()
+            ),
+            "dynamics_output_bias_norm": self._output_bias_norm(
+                self.adapter.dynamics_branch
+            ),
+            "tracking_output_bias_norm": self._output_bias_norm(
+                self.adapter.tracking_branch
             ),
             "gate_mean": float(gate.mean().detach().cpu()),
             "gate_p10": float(torch.quantile(gate.detach(), 0.10).cpu()),

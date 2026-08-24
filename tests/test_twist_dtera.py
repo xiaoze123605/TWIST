@@ -133,6 +133,34 @@ class DTERATest(unittest.TestCase):
         (latent * weights).mean().backward()
         self.assertGreater(history.grad.norm().item(), 0.0)
 
+    def test_residual_output_biases_are_zero_and_frozen(self):
+        actor = make_actor(self.base_path)
+        for branch in (
+            actor.adapter.dynamics_branch,
+            actor.adapter.tracking_branch,
+        ):
+            output_layer = [
+                module
+                for module in branch.net.modules()
+                if isinstance(module, torch.nn.Linear)
+            ][-1]
+            self.assertFalse(output_layer.bias.requires_grad)
+            self.assertEqual(output_layer.bias.abs().max().item(), 0.0)
+
+        obs = torch.randn(8, TOTAL_OBS_DIM)
+        loss = actor.action_delta_components(obs)[0].square().mean()
+        loss.backward()
+        for branch in (
+            actor.adapter.dynamics_branch,
+            actor.adapter.tracking_branch,
+        ):
+            output_layer = [
+                module
+                for module in branch.net.modules()
+                if isinstance(module, torch.nn.Linear)
+            ][-1]
+            self.assertIsNone(output_layer.bias.grad)
+
     def test_zero_init_and_base_only(self):
         obs = torch.randn(5, TOTAL_OBS_DIM)
         actor = make_actor(self.base_path)

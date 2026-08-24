@@ -175,6 +175,7 @@ class DualAnyAdapterDiagnosticsTest(unittest.TestCase):
 
         self.assertEqual(config.algorithm.schedule, "fixed")
         self.assertAlmostEqual(config.algorithm.learning_rate, 2e-4)
+        self.assertIs(config.policy.freeze_residual_output_bias, True)
 
     def test_history_encoder_is_owned_by_joint_wm_optimizer(self):
         actor = make_actor(self.base_actor_path, history_policy_grad_scale=0.10)
