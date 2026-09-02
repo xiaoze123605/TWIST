@@ -12,18 +12,27 @@ import mujoco.viewer as mjv
 from tqdm import tqdm
 from data_utils.params import DEFAULT_MIMIC_OBS
 import os
-from data_utils.rot_utils import quatToEuler
+from data_utils.rot_utils import quatToEuler, quat_rotate_inverse
 from deploy_safety import MIMIC_OBS_DIM, parse_mimic_msg
 
 BASE_OBS_DIM = 1155
 ANYADAPTER_OBS_DIM = 2635
 ANYADAPTER_HEADING_OBS_DIM = 2637
+DTERA_OBS_DIM = 3695
 ANY2TRACK_OBS_DIM = 7001
 NUM_ACTIONS = 23
 ANYADAPTER_HISTORY_LEN = 20
 ANYADAPTER_STATE_INDICES = list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82))
 REDIS_STALE_THRESHOLD = 0.5
 _POLICY_PROBE_ERRORS = {}
+_POLICY_OBS_DIM_CACHE = {}
+SUPPORTED_POLICY_OBS_DIMS = (
+    BASE_OBS_DIM,
+    ANYADAPTER_OBS_DIM,
+    ANYADAPTER_HEADING_OBS_DIM,
+    DTERA_OBS_DIM,
+    ANY2TRACK_OBS_DIM,
+)
 
 # AnyAdapter runtime support (optional)
 try:
@@ -87,54 +96,99 @@ def aggregate_wrist_dof_pos(body_dof_pos, wrist_dof_pos):
     return whole_body_pd_target
 
 
-def _policy_accepts_obs_dim(policy_path, device, obs_dim):
+def _detect_policy_obs_dim(policy_path, device):
+    """Load TorchScript once and probe all supported observation contracts."""
+    cache_key = (os.path.abspath(policy_path), str(device))
+    if cache_key in _POLICY_OBS_DIM_CACHE:
+        return _POLICY_OBS_DIM_CACHE[cache_key]
     try:
         policy = torch.jit.load(policy_path, map_location=device)
+        policy = policy.to(device)
         policy.eval()
-        with torch.no_grad():
-            out = policy(torch.zeros(1, obs_dim, device=device))
-        _POLICY_PROBE_ERRORS.pop((str(device), obs_dim), None)
-        return out.shape[-1] == NUM_ACTIONS
     except Exception as exc:
-        _POLICY_PROBE_ERRORS[(str(device), obs_dim)] = str(exc).splitlines()[-1]
-        return False
+        detail = str(exc).splitlines()[-1]
+        for obs_dim in SUPPORTED_POLICY_OBS_DIMS:
+            _POLICY_PROBE_ERRORS[(str(device), obs_dim)] = detail
+        _POLICY_OBS_DIM_CACHE[cache_key] = None
+        return None
+    with torch.no_grad():
+        for obs_dim in SUPPORTED_POLICY_OBS_DIMS:
+            try:
+                out = policy(torch.zeros(1, obs_dim, device=device))
+                if out.shape[-1] == NUM_ACTIONS:
+                    _POLICY_PROBE_ERRORS.pop((str(device), obs_dim), None)
+                    _POLICY_OBS_DIM_CACHE[cache_key] = obs_dim
+                    return obs_dim
+                detail = f"policy output dim is {out.shape[-1]}, expected {NUM_ACTIONS}"
+            except Exception as exc:
+                detail = str(exc).splitlines()[-1]
+            _POLICY_PROBE_ERRORS[(str(device), obs_dim)] = detail
+    _POLICY_OBS_DIM_CACHE[cache_key] = None
+    return None
 
 
-def _should_use_anyadapter(policy_path, device, requested_anyadapter):
-    if requested_anyadapter:
-        return True
-    accepts_base = _policy_accepts_obs_dim(policy_path, device, BASE_OBS_DIM)
-    if accepts_base:
+def _policy_accepts_obs_dim(policy_path, device, obs_dim):
+    return _detect_policy_obs_dim(policy_path, device) == obs_dim
+
+
+def _should_use_anyadapter(
+    policy_path, device, requested_anyadapter, detected_obs_dim=None
+):
+    if detected_obs_dim is None:
+        detected_obs_dim = _detect_policy_obs_dim(policy_path, device)
+    if detected_obs_dim == BASE_OBS_DIM and not requested_anyadapter:
         return False
-    accepts_augmented = _policy_accepts_obs_dim(policy_path, device, ANYADAPTER_OBS_DIM)
-    if accepts_augmented:
+    if detected_obs_dim == ANYADAPTER_OBS_DIM:
         print(
             "[AnyAdapter] Detected 2635-D AnyAdapter policy; "
             "enabling runtime history wrapper automatically."
         )
         return True
-    accepts_heading = _policy_accepts_obs_dim(policy_path, device, ANYADAPTER_HEADING_OBS_DIM)
-    if accepts_heading:
+    if detected_obs_dim == ANYADAPTER_HEADING_OBS_DIM:
         print(
             "[AnyAdapter] Detected 2637-D heading-aware AnyAdapter policy; "
             "enabling runtime history and heading context automatically."
         )
         return True
-    accepts_any2track = _policy_accepts_obs_dim(policy_path, device, ANY2TRACK_OBS_DIM)
-    if accepts_any2track:
+    if detected_obs_dim == DTERA_OBS_DIM:
+        print(
+            "[DTERA] Detected 3695-D dual-history policy; enabling dynamics "
+            "and tracking-error runtime histories automatically."
+        )
+        return True
+    if detected_obs_dim == ANY2TRACK_OBS_DIM:
         print(
             "[Any2Track] Detected 7001-D layer-adapter policy; "
             "enabling 79-frame runtime history automatically."
         )
         return True
+    if detected_obs_dim == BASE_OBS_DIM and requested_anyadapter:
+        raise RuntimeError(
+            "--use_anyadapter was requested, but the policy accepts only the "
+            f"{BASE_OBS_DIM}-D base TWIST observation."
+        )
+    dtera_probe_error = _POLICY_PROBE_ERRORS.get(
+        (str(device), DTERA_OBS_DIM), "unknown error"
+    )
+    if "same device" in dtera_probe_error.lower():
+        raise RuntimeError(
+            f"The policy reached the {DTERA_OBS_DIM}-D DTERA graph, but its "
+            f"TorchScript tensors are not device-portable on {device}:\n"
+            f"{dtera_probe_error}\n"
+            "This is not an observation-dimension change. Re-export the JIT "
+            "with the device-portable DTERA exporter, or use --device cpu as "
+            "a temporary workaround."
+        )
     raise RuntimeError(
         f"Policy does not accept {BASE_OBS_DIM}-D TWIST obs, "
         f"{ANYADAPTER_OBS_DIM}-D AnyAdapter obs, or "
         f"{ANYADAPTER_HEADING_OBS_DIM}-D heading-aware obs, or "
+        f"{DTERA_OBS_DIM}-D DTERA obs, or "
         f"{ANY2TRACK_OBS_DIM}-D Any2Track obs: {policy_path}\n"
-        f"{ANY2TRACK_OBS_DIM}-D probe on {device} failed: "
-        f"{_POLICY_PROBE_ERRORS.get((str(device), ANY2TRACK_OBS_DIM), 'unknown error')}\n"
-        "If CUDA is occupied by training, retry with --device cpu."
+        f"Probe on {device} failed. Last DTERA error: "
+        f"{dtera_probe_error}\n"
+        "The device only selects where TorchScript inference runs; it does not "
+        "change the policy observation contract."
     )
     
 class RealTimePolicyController:
@@ -155,14 +209,14 @@ class RealTimePolicyController:
             print(f"Error connecting to Redis: {e}")
 
         self.device = device
-        self.use_anyadapter = _should_use_anyadapter(policy_path, device, use_anyadapter)
-        self.use_any2track = self.use_anyadapter and _policy_accepts_obs_dim(
-            policy_path, device, ANY2TRACK_OBS_DIM
+        self.policy_obs_dim = _detect_policy_obs_dim(policy_path, device)
+        self.use_anyadapter = _should_use_anyadapter(
+            policy_path, device, use_anyadapter, self.policy_obs_dim
         )
+        self.use_dtera = self.policy_obs_dim == DTERA_OBS_DIM
+        self.use_any2track = self.policy_obs_dim == ANY2TRACK_OBS_DIM
         self.anyadapter_context_dim = (
-            2 if self.use_anyadapter and _policy_accepts_obs_dim(
-                policy_path, device, ANYADAPTER_HEADING_OBS_DIM
-            ) else 0
+            2 if self.policy_obs_dim == ANYADAPTER_HEADING_OBS_DIM else 0
         )
 
         if self.use_anyadapter:
@@ -182,7 +236,16 @@ class RealTimePolicyController:
                 action_clip=10.0,
                 action_ema_alpha=anyadapter_ema_alpha,
                 adapter_context_dim=self.anyadapter_context_dim,
-                fill_history_on_first_observation=self.use_any2track,
+                fill_history_on_first_observation=(
+                    self.use_any2track or self.use_dtera
+                ),
+                tracking_error_history_len=(
+                    ANYADAPTER_HISTORY_LEN if self.use_dtera else 0
+                ),
+                tracking_ref_dof_vel_filter_alpha=0.5,
+                tracking_ref_dof_vel_clip=20.0,
+                control_dt=0.02,
+                fill_tracking_history_on_first_observation=True,
             )
             self.anyadapter_runtime = AnyAdapterRuntime(self.anyadapter_cfg)
             self.policy = None  # not used directly
@@ -444,6 +507,24 @@ class RealTimePolicyController:
                             raw_action = self.anyadapter_runtime.act(
                                 obs_buf,
                                 adapter_context=adapter_context,
+                                **(
+                                    {
+                                        "tracking_reference": action_mimic,
+                                        "dof_pos": body_dof_pos,
+                                        "dof_vel": body_dof_vel,
+                                        "root_linear_velocity": quat_rotate_inverse(
+                                            np.asarray([
+                                                quat[1], quat[2], quat[3], quat[0]
+                                            ], dtype=np.float32).reshape(1, 4),
+                                            np.asarray(
+                                                self.data.qvel[:3], dtype=np.float32
+                                            ).reshape(1, 3),
+                                        ).reshape(3),
+                                        "root_yaw_velocity": float(ang_vel[2]),
+                                        "roll_pitch": rpy[:2],
+                                    }
+                                    if self.use_dtera else {}
+                                ),
                             )
                         else:
                             raw_action = self.policy(obs_tensor).cpu().numpy().squeeze()

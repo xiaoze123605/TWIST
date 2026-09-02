@@ -455,6 +455,40 @@ class G1MimicStuAnyAdapterDTERACfgPPO(G1MimicPrivCfgPPO):
         world_model_bootstrap_probability = 0.8
 
 
+# ======================== DTERA Selective Independent Gates ========================
+
+class G1MimicStuAnyAdapterDTERASelectiveCfg(G1MimicStuAnyAdapterDTERACfg):
+    """DTERA environment kept identical for a controlled policy comparison."""
+
+
+class G1MimicStuAnyAdapterDTERASelectiveCfgPPO(
+    G1MimicStuAnyAdapterDTERACfgPPO
+):
+    """Conservative independent gates for the next sim-to-real training run.
+
+    Dynamics compensation opens earlier than tracking compensation, but both
+    branches close exactly at stand. WM confidence and learned risk stay
+    diagnostic until multi-seed evaluation demonstrates reliable ranking.
+    """
+
+    class runner(G1MimicStuAnyAdapterDTERACfgPPO.runner):
+        experiment_name = "g1_twist_dtera_selective_gate_v1"
+        run_name = ""
+
+    class policy(G1MimicStuAnyAdapterDTERACfgPPO.policy):
+        use_independent_branch_gates = True
+        tracking_demand_mode = "smoothstep"
+        tracking_demand_low = 0.30
+        tracking_demand_high = 0.80
+        dynamics_demand_low = 0.10
+        dynamics_demand_high = 0.50
+        dynamics_gate_scale = 0.50
+        tracking_gate_scale = 1.0
+        dynamics_confidence_gate_strength = 0.0
+        gate_mode = "demand_only"
+        confidence_gate_strength = 0.0
+
+
 # ======================== V5 Heading-Aware, Bias-Controlled ========================
 
 class G1MimicStuAnyAdapterV5Cfg(G1MimicStuAnyAdapterV4Cfg):

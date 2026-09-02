@@ -180,7 +180,14 @@ class HumanoidChar(LeggedRobot):
         pass
                                                                                                                                                                                                                                                                                                                                                                    
     def _reset_dofs(self, env_ids, dof_pos, dof_vel):
-        self.dof_pos[env_ids] = dof_pos[env_ids] * torch_rand_float(0.8, 1.2, (len(env_ids), self.num_dof), device=self.device)
+        fixed_scale = getattr(self, "_eval_scenario_dof_pos_scale", None)
+        if fixed_scale is None:
+            dof_scale = torch_rand_float(
+                0.8, 1.2, (len(env_ids), self.num_dof), device=self.device
+            )
+        else:
+            dof_scale = fixed_scale[env_ids]
+        self.dof_pos[env_ids] = dof_pos[env_ids] * dof_scale
         self.dof_vel[env_ids] = dof_vel[env_ids]
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)

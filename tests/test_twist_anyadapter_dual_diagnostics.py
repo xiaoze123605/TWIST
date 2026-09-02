@@ -177,6 +177,30 @@ class DualAnyAdapterDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(config.algorithm.learning_rate, 2e-4)
         self.assertIs(config.policy.freeze_residual_output_bias, True)
 
+    def test_selective_dtera_config_preserves_scales_and_separates_gates(self):
+        config_module = load_config_with_minimal_base_classes()
+        legacy = config_module.G1MimicStuAnyAdapterDTERACfgPPO()
+        selective = config_module.G1MimicStuAnyAdapterDTERASelectiveCfgPPO()
+
+        self.assertFalse(hasattr(legacy.policy, "use_independent_branch_gates"))
+        self.assertTrue(selective.policy.use_independent_branch_gates)
+        self.assertEqual(selective.policy.tracking_demand_mode, "smoothstep")
+        self.assertEqual(selective.policy.dynamics_demand_low, 0.10)
+        self.assertEqual(selective.policy.dynamics_demand_high, 0.50)
+        self.assertEqual(selective.policy.dynamics_gate_scale, 0.5)
+        self.assertEqual(selective.policy.tracking_gate_scale, 1.0)
+        self.assertEqual(
+            selective.policy.dynamics_action_delta_scale,
+            legacy.policy.dynamics_action_delta_scale,
+        )
+        self.assertEqual(
+            selective.policy.tracking_action_delta_scale,
+            legacy.policy.tracking_action_delta_scale,
+        )
+        self.assertEqual(
+            selective.algorithm.learning_rate, legacy.algorithm.learning_rate
+        )
+
     def test_history_encoder_is_owned_by_joint_wm_optimizer(self):
         actor = make_actor(self.base_actor_path, history_policy_grad_scale=0.10)
         algorithm = PPOAnyAdapter(object(), actor, joint_encoder_optimization=True)

@@ -157,7 +157,7 @@ class ResidualRiskPredictor(nn.Module):
 
 
 class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
-    """Frozen TWIST actor plus DTERA dual residual and adaptive scalar gate."""
+    """Frozen TWIST actor plus DTERA dual residual and selective branch gates."""
 
     is_dtera = True
 
@@ -181,6 +181,15 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         gate_risk_k: float = 5.0,
         gate_mode: str = "demand_only",
         confidence_gate_strength: float = 0.0,
+        use_independent_branch_gates: bool = False,
+        tracking_demand_mode: str = "legacy_exp",
+        tracking_demand_low: float = 0.30,
+        tracking_demand_high: float = 0.80,
+        dynamics_demand_low: float = 0.10,
+        dynamics_demand_high: float = 0.50,
+        dynamics_gate_scale: float = 1.0,
+        tracking_gate_scale: float = 1.0,
+        dynamics_confidence_gate_strength: float = 0.0,
         residual_warmup_iterations: int = 1000,
         freeze_residual_output_bias: bool = True,
         wm_variance_ema_decay: float = 0.99,
@@ -222,6 +231,17 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         self.gate_risk_k = float(gate_risk_k)
         self.gate_mode = str(gate_mode)
         self.confidence_gate_strength = float(confidence_gate_strength)
+        self.use_independent_branch_gates = bool(use_independent_branch_gates)
+        self.tracking_demand_mode = str(tracking_demand_mode)
+        self.tracking_demand_low = float(tracking_demand_low)
+        self.tracking_demand_high = float(tracking_demand_high)
+        self.dynamics_demand_low = float(dynamics_demand_low)
+        self.dynamics_demand_high = float(dynamics_demand_high)
+        self.dynamics_gate_scale = float(dynamics_gate_scale)
+        self.tracking_gate_scale = float(tracking_gate_scale)
+        self.dynamics_confidence_gate_strength = float(
+            dynamics_confidence_gate_strength
+        )
         self.residual_warmup_iterations = int(residual_warmup_iterations)
         self.freeze_residual_output_bias = bool(freeze_residual_output_bias)
         self.wm_variance_ema_decay = float(wm_variance_ema_decay)
@@ -231,6 +251,28 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             raise ValueError(f"unsupported gate_mode: {self.gate_mode}")
         if not 0.0 <= self.confidence_gate_strength <= 1.0:
             raise ValueError("confidence_gate_strength must be in [0, 1]")
+        if self.tracking_demand_mode not in ("legacy_exp", "smoothstep"):
+            raise ValueError(
+                f"unsupported tracking_demand_mode: {self.tracking_demand_mode}"
+            )
+        if not 0.0 <= self.tracking_demand_low < self.tracking_demand_high:
+            raise ValueError(
+                "tracking_demand thresholds require 0 <= low < high"
+            )
+        if not 0.0 <= self.dynamics_demand_low < self.dynamics_demand_high:
+            raise ValueError(
+                "dynamics_demand thresholds require 0 <= low < high"
+            )
+        for name, value in (
+            ("dynamics_gate_scale", self.dynamics_gate_scale),
+            ("tracking_gate_scale", self.tracking_gate_scale),
+            (
+                "dynamics_confidence_gate_strength",
+                self.dynamics_confidence_gate_strength,
+            ),
+        ):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
         if self.residual_warmup_iterations < 0:
             raise ValueError("residual_warmup_iterations must be non-negative")
         if self.adapter_branch_mode not in ("base_only", "dyn_only", "err_only", "full"):
@@ -386,7 +428,13 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         )
 
     def normalize_tracking_error(self, error):
-        scale = self.tracking_error_scale.to(device=error.device, dtype=error.dtype)
+        # ``tracking_error_scale`` is a registered buffer, so loading/moving
+        # the actor already keeps it on the same device as the model.  Passing
+        # ``device=error.device`` here is unsafe for a traced export: tracing
+        # on CPU records a literal ``Device("cpu")`` in the graph, and the
+        # resulting JIT then moves this scale back to CPU when inference runs
+        # on CUDA.  Preserve the buffer device and only follow the input dtype.
+        scale = self.tracking_error_scale.to(dtype=error.dtype)
         return error / scale
 
     def action_delta_components(self, observations, detach_history=True, base_action=None):
@@ -422,6 +470,21 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             + self.tracking_branch_gain * delta_error
         )
 
+    def _selected_branch_candidates(self, delta_dynamics, delta_error):
+        """Return independently maskable branch contributions."""
+        zero = torch.zeros_like(delta_dynamics)
+        selected_dynamics = (
+            self.dynamics_branch_gain * delta_dynamics
+            if self.adapter_branch_mode in ("dyn_only", "full")
+            else zero
+        )
+        selected_tracking = (
+            self.tracking_branch_gain * delta_error
+            if self.adapter_branch_mode in ("err_only", "full")
+            else zero
+        )
+        return selected_dynamics, selected_tracking
+
     def candidate_delta_scale(self):
         dyn_scale = self.adapter.dynamics_branch.delta_scale
         err_scale = self.adapter.tracking_branch.delta_scale
@@ -436,12 +499,56 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             + abs(self.tracking_branch_gain) * err_scale
         )
 
-    def tracking_demand(self, error_frame, normalized=False):
+    @staticmethod
+    def _smoothstep_demand(magnitude, low, high):
+        width = high - low
+        unit = ((magnitude - low) / width).clamp(0.0, 1.0)
+        demand = unit.square() * (3.0 - 2.0 * unit)
+        threshold_eps = 1e-6
+        demand = torch.where(
+            magnitude <= low + threshold_eps,
+            torch.zeros_like(demand),
+            demand,
+        )
+        return torch.where(
+            magnitude >= high - threshold_eps,
+            torch.ones_like(demand),
+            demand,
+        )
+
+    def _tracking_error_magnitude(self, error_frame, normalized=False):
         normalized_error = (
             error_frame if normalized else self.normalize_tracking_error(error_frame)
         )
-        magnitude = torch.sqrt(torch.mean(normalized_error.square(), dim=-1) + 1e-12)
-        demand = 1.0 - torch.exp(-self.gate_demand_k * magnitude)
+        return torch.sqrt(
+            torch.mean(normalized_error.square(), dim=-1) + 1e-12
+        )
+
+    def tracking_demand(self, error_frame, normalized=False):
+        magnitude = self._tracking_error_magnitude(error_frame, normalized)
+        if self.tracking_demand_mode == "legacy_exp":
+            demand = 1.0 - torch.exp(-self.gate_demand_k * magnitude)
+        else:
+            # Fixed normalized thresholds are deterministic in simulation and
+            # on hardware. Smoothstep supplies exact closed/open regions
+            # without deployment-time running-statistic drift.
+            demand = self._smoothstep_demand(
+                magnitude,
+                self.tracking_demand_low,
+                self.tracking_demand_high,
+            )
+        return torch.where(
+            torch.all(error_frame == 0, dim=-1), torch.zeros_like(demand), demand
+        ).clamp(0.0, 1.0)
+
+    def dynamics_demand(self, error_frame, normalized=False):
+        """Early-opening dynamics demand that is exactly closed at stand."""
+        magnitude = self._tracking_error_magnitude(error_frame, normalized)
+        demand = self._smoothstep_demand(
+            magnitude,
+            self.dynamics_demand_low,
+            self.dynamics_demand_high,
+        )
         return torch.where(
             torch.all(error_frame == 0, dim=-1), torch.zeros_like(demand), demand
         ).clamp(0.0, 1.0)
@@ -475,6 +582,10 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         strength = self.confidence_gate_strength
         return 1.0 - strength * (1.0 - confidence)
 
+    def dynamics_effective_confidence(self, confidence):
+        strength = self.dynamics_confidence_gate_strength
+        return 1.0 - strength * (1.0 - confidence)
+
     def risk_logits(self, observations, actions):
         _, dynamics_history, _ = self.split_dtera_obs(observations)
         state = dynamics_history[:, -1, : self.hist_state_dim]
@@ -492,15 +603,170 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
     def predict_world_model(self, observations, actions=None):
         return self.predict_world_model_members(observations, actions).mean(dim=0)
 
+    def _compose_gated_delta(
+        self,
+        selected_dynamics,
+        selected_tracking,
+        tracking_demand,
+        dynamics_demand,
+        confidence,
+        safety,
+    ):
+        """Apply the configured shared or per-branch gates.
+
+        This helper contains the authoritative action mathematics.  Both the
+        fast actor path and the full diagnostic path call it so skipping
+        unused WM/risk inference cannot change the policy output.
+        """
+        effective_confidence = self.effective_confidence(confidence)
+        dynamics_confidence = self.dynamics_effective_confidence(confidence)
+        demand_confidence_gate = tracking_demand * effective_confidence
+        full_gate = demand_confidence_gate * safety
+
+        if not self.use_adaptive_residual_gate or self.gate_mode == "off":
+            legacy_gate = torch.ones_like(tracking_demand)
+        elif self.gate_mode == "demand_only":
+            legacy_gate = tracking_demand
+        elif self.gate_mode == "demand_confidence":
+            legacy_gate = demand_confidence_gate
+        else:
+            legacy_gate = full_gate
+        if self.adapter_branch_mode == "base_only":
+            legacy_gate = torch.zeros_like(legacy_gate)
+        legacy_gate = legacy_gate.clamp(0.0, 1.0)
+
+        if self.use_independent_branch_gates:
+            if not self.use_adaptive_residual_gate or self.gate_mode == "off":
+                dynamics_gate = torch.ones_like(dynamics_demand)
+            elif self.gate_mode == "demand_only":
+                dynamics_gate = dynamics_demand
+            elif self.gate_mode == "demand_confidence":
+                dynamics_gate = dynamics_demand * dynamics_confidence
+            else:
+                dynamics_gate = dynamics_demand * dynamics_confidence * safety
+
+            if not self.use_adaptive_residual_gate or self.gate_mode == "off":
+                tracking_gate = torch.ones_like(tracking_demand)
+            elif self.gate_mode == "demand_only":
+                tracking_gate = tracking_demand
+            elif self.gate_mode == "demand_confidence":
+                tracking_gate = demand_confidence_gate
+            else:
+                tracking_gate = full_gate
+
+            dynamics_gate = (
+                self.dynamics_gate_scale * dynamics_gate
+            ).clamp(0.0, 1.0)
+            tracking_gate = (
+                self.tracking_gate_scale * tracking_gate
+            ).clamp(0.0, 1.0)
+            if self.adapter_branch_mode not in ("dyn_only", "full"):
+                dynamics_gate = torch.zeros_like(dynamics_gate)
+            if self.adapter_branch_mode not in ("err_only", "full"):
+                tracking_gate = torch.zeros_like(tracking_gate)
+            gated_dynamics = dynamics_gate.unsqueeze(-1) * selected_dynamics
+            gated_tracking = tracking_gate.unsqueeze(-1) * selected_tracking
+            # Preserve the historical field as the tracking-gate alias.
+            gate = tracking_gate
+        else:
+            dynamics_gate = legacy_gate
+            tracking_gate = legacy_gate
+            gated_dynamics = legacy_gate.unsqueeze(-1) * selected_dynamics
+            gated_tracking = legacy_gate.unsqueeze(-1) * selected_tracking
+            gate = legacy_gate
+
+        return {
+            "effective_confidence": effective_confidence,
+            "demand_confidence_gate": demand_confidence_gate,
+            "full_gate": full_gate,
+            "gate": gate,
+            "dynamics_gate": dynamics_gate,
+            "tracking_gate": tracking_gate,
+            "gated_delta_dyn": gated_dynamics,
+            "gated_delta_err": gated_tracking,
+            "gated_delta": gated_dynamics + gated_tracking,
+        }
+
+    def _gate_model_requirements(self):
+        """Return whether the action actually depends on WM/risk outputs."""
+        if not self.use_adaptive_residual_gate or self.gate_mode in (
+            "off", "demand_only"
+        ):
+            return False, False
+        needs_confidence = self.confidence_gate_strength > 0.0
+        if self.use_independent_branch_gates:
+            needs_confidence = (
+                needs_confidence
+                or self.dynamics_confidence_gate_strength > 0.0
+            )
+        needs_risk = self.gate_mode == "full"
+        return needs_confidence, needs_risk
+
+    def _action_delta_fast(self, observations, base_action, detach_history=True):
+        """Compute the applied residual without diagnostic-only model calls."""
+        delta_dynamics, delta_error = self.action_delta_components(
+            observations,
+            detach_history=detach_history,
+            base_action=base_action,
+        )
+        selected_dynamics, selected_tracking = self._selected_branch_candidates(
+            delta_dynamics, delta_error
+        )
+        candidate = selected_dynamics + selected_tracking
+        _, _, tracking_history = self.split_dtera_obs(observations)
+        error_frame = tracking_history[:, -1]
+        tracking_demand = self.tracking_demand(error_frame)
+        dynamics_demand = self.dynamics_demand(error_frame)
+
+        confidence = tracking_demand.new_ones(tracking_demand.shape)
+        safety = tracking_demand.new_ones(tracking_demand.shape)
+        needs_confidence, needs_risk = self._gate_model_requirements()
+        if needs_confidence or needs_risk:
+            # Gate models are auxiliary estimators and must not receive PPO
+            # gradients through the actor action path.
+            with torch.no_grad():
+                if needs_confidence:
+                    members = self.predict_world_model_members(
+                        observations, base_action + candidate.detach()
+                    )
+                    confidence, _ = self.confidence_from_members(members)
+                if needs_risk:
+                    p_base = torch.sigmoid(
+                        self.risk_logits(observations, base_action)
+                    )
+                    p_candidate = torch.sigmoid(
+                        self.risk_logits(
+                            observations, base_action + candidate.detach()
+                        )
+                    )
+                    safety = self.safety_from_delta_risk(
+                        p_candidate - p_base
+                    )
+
+        gates = self._compose_gated_delta(
+            selected_dynamics,
+            selected_tracking,
+            tracking_demand,
+            dynamics_demand,
+            confidence,
+            safety,
+        )
+        return self.residual_warmup_factor() * gates["gated_delta"]
+
     def action_diagnostics(self, observations, base_action=None):
         if base_action is None:
             base_action = self.base_action(observations)
         delta_dynamics, delta_error = self.action_delta_components(
             observations, detach_history=True, base_action=base_action
         )
-        candidate = self._selected_candidate(delta_dynamics, delta_error)
+        selected_dynamics, selected_tracking = self._selected_branch_candidates(
+            delta_dynamics, delta_error
+        )
+        candidate = selected_dynamics + selected_tracking
         _, _, tracking_history = self.split_dtera_obs(observations)
-        demand = self.tracking_demand(tracking_history[:, -1])
+        error_frame = tracking_history[:, -1]
+        demand = self.tracking_demand(error_frame)
+        dynamics_demand = self.dynamics_demand(error_frame)
 
         # WM/risk are diagnostic gate models during the PPO phase.  Their
         # parameters and the dynamics encoder must remain frozen until the
@@ -518,55 +784,60 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             )
         delta_risk = p_candidate - p_base
         safety = self.safety_from_delta_risk(delta_risk).detach()
-        effective_confidence = self.effective_confidence(confidence)
-        demand_confidence_gate = demand * effective_confidence
-        full_gate = demand_confidence_gate * safety
-
-        if not self.use_adaptive_residual_gate or self.gate_mode == "off":
-            gate = torch.ones_like(demand)
-        elif self.gate_mode == "demand_only":
-            gate = demand
-        elif self.gate_mode == "demand_confidence":
-            gate = demand_confidence_gate
-        else:
-            gate = full_gate
-        if self.adapter_branch_mode == "base_only":
-            gate = torch.zeros_like(gate)
-        gate = gate.clamp(0.0, 1.0)
-        gated = gate.unsqueeze(-1) * candidate
+        gates = self._compose_gated_delta(
+            selected_dynamics,
+            selected_tracking,
+            demand,
+            dynamics_demand,
+            confidence,
+            safety,
+        )
         alpha_res = self.residual_warmup_factor()
-        applied = alpha_res * gated
+        applied = alpha_res * gates["gated_delta"]
         return {
             "base_action": base_action,
             "delta_dyn": delta_dynamics,
             "delta_err": delta_error,
             "candidate_delta": candidate,
+            "selected_delta_dyn": selected_dynamics,
+            "selected_delta_err": selected_tracking,
             "demand": demand,
+            "dynamics_demand": dynamics_demand,
             "confidence": confidence,
-            "effective_confidence": effective_confidence,
+            "effective_confidence": gates["effective_confidence"],
             "uncertainty": uncertainty,
             "p_base": p_base,
             "p_candidate": p_candidate,
             "delta_risk": delta_risk,
             "safety": safety,
-            "demand_confidence_gate": demand_confidence_gate,
-            "full_gate": full_gate,
-            "gate": gate,
+            "demand_confidence_gate": gates["demand_confidence_gate"],
+            "full_gate": gates["full_gate"],
+            "gate": gates["gate"],
+            "dynamics_gate": gates["dynamics_gate"],
+            "tracking_gate": gates["tracking_gate"],
             "residual_warmup_factor": alpha_res,
-            "gated_delta": gated,
+            "gated_delta_dyn": gates["gated_delta_dyn"],
+            "gated_delta_err": gates["gated_delta_err"],
+            "gated_delta": gates["gated_delta"],
             "applied_delta": applied,
         }
 
     def action_delta(self, observations, detach_history=True, base_action=None):
         if self.adapter_branch_mode == "base_only":
             return observations.new_zeros(observations.shape[0], self.num_actions)
-        return self.action_diagnostics(observations, base_action)["applied_delta"]
+        if base_action is None:
+            base_action = self.base_action(observations)
+        return self._action_delta_fast(
+            observations,
+            base_action,
+            detach_history=detach_history,
+        )
 
     def actor_mean(self, observations):
         base_action = self.base_action(observations)
         if self.adapter_branch_mode == "base_only":
             return base_action
-        applied = self.action_diagnostics(observations, base_action)["applied_delta"]
+        applied = self._action_delta_fast(observations, base_action)
         return base_action + self.adapter_gain * applied
 
     def error_prediction_loss(self, observations, actions, next_observations, valid_mask):
@@ -634,6 +905,8 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         gated_l2 = torch.norm(gated, dim=-1).mean()
         applied_l2 = torch.norm(applied, dim=-1).mean()
         gate = diag["gate"]
+        dynamics_gate = diag["dynamics_gate"]
+        tracking_gate = diag["tracking_gate"]
         delta_risk = diag["delta_risk"]
         dyn_scale = self.adapter.dynamics_branch.delta_scale
         err_scale = self.adapter.tracking_branch.delta_scale
@@ -673,6 +946,12 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             "wm_uncertainty_p95": float(torch.quantile(diag["uncertainty"], 0.95).cpu()),
             "tracking_demand_mean": float(diag["demand"].mean().detach().cpu()),
             "tracking_demand_p90": float(torch.quantile(diag["demand"].detach(), 0.90).cpu()),
+            "dynamics_demand_mean": float(
+                diag["dynamics_demand"].mean().detach().cpu()
+            ),
+            "dynamics_demand_p90": float(
+                torch.quantile(diag["dynamics_demand"].detach(), 0.90).cpu()
+            ),
             "gate_confidence_mean": float(diag["confidence"].mean().cpu()),
             "safety_factor_mean": float(diag["safety"].mean().cpu()),
             "demand_confidence_gate_mean": float(
@@ -698,6 +977,12 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             "gate_p90": float(torch.quantile(gate.detach(), 0.90).cpu()),
             "gate_fraction_lt_0_1": float((gate < 0.1).float().mean().detach().cpu()),
             "gate_fraction_gt_0_9": float((gate > 0.9).float().mean().detach().cpu()),
+            "dynamics_gate_mean": float(dynamics_gate.mean().detach().cpu()),
+            "dynamics_gate_p10": float(torch.quantile(dynamics_gate.detach(), 0.10).cpu()),
+            "dynamics_gate_p90": float(torch.quantile(dynamics_gate.detach(), 0.90).cpu()),
+            "tracking_gate_mean": float(tracking_gate.mean().detach().cpu()),
+            "tracking_gate_p10": float(torch.quantile(tracking_gate.detach(), 0.10).cpu()),
+            "tracking_gate_p90": float(torch.quantile(tracking_gate.detach(), 0.90).cpu()),
             "p_base_mean": float(diag["p_base"].mean().cpu()),
             "p_candidate_mean": float(diag["p_candidate"].mean().cpu()),
             "delta_risk_mean": float(delta_risk.mean().cpu()),
@@ -717,5 +1002,6 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         )
 
     def adapter_bias_regularization_loss(self, observations):
-        candidate = self.action_diagnostics(observations)["candidate_delta"]
+        delta_dynamics, delta_error = self.action_delta_components(observations)
+        candidate = self._selected_candidate(delta_dynamics, delta_error)
         return torch.mean(torch.mean(candidate, dim=0).square())

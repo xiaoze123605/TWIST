@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import torch
 
@@ -133,6 +134,25 @@ class DTERATest(unittest.TestCase):
         (latent * weights).mean().backward()
         self.assertGreater(history.grad.norm().item(), 0.0)
 
+    def test_traced_tracking_normalization_has_no_fixed_cpu_device(self):
+        actor = make_actor(self.base_path).eval()
+
+        class TrackingNormalizer(torch.nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+
+            def forward(self, error):
+                return self.model.normalize_tracking_error(error)
+
+        example = torch.randn(2, HISTORY_LEN, ERROR_FRAME_DIM)
+        traced = torch.jit.trace(TrackingNormalizer(actor), example)
+        self.assertTrue(torch.equal(traced(example), actor.normalize_tracking_error(example)))
+        self.assertNotIn(
+            'Device = prim::Constant[value="cpu"]()',
+            str(traced.inlined_graph),
+        )
+
     def test_residual_output_biases_are_zero_and_frozen(self):
         actor = make_actor(self.base_path)
         for branch in (
@@ -215,6 +235,101 @@ class DTERATest(unittest.TestCase):
 
         diag = actor.action_diagnostics(torch.randn(9, TOTAL_OBS_DIM))
         self.assertTrue(torch.all((diag["gate"] >= 0) & (diag["gate"] <= 1)))
+
+    def test_smoothstep_tracking_demand_has_closed_and_open_regions(self):
+        actor = make_actor(
+            self.base_path,
+            tracking_demand_mode="smoothstep",
+            tracking_demand_low=0.30,
+            tracking_demand_high=0.80,
+        )
+        normalized_error = torch.tensor([0.0, 0.20, 0.30, 0.55, 0.80, 1.20])
+        normalized_error = normalized_error[:, None].repeat(1, ERROR_FRAME_DIM)
+        demand = actor.tracking_demand(normalized_error, normalized=True)
+        self.assertTrue(torch.equal(demand[:3], torch.zeros(3)))
+        self.assertAlmostEqual(demand[3].item(), 0.5, places=6)
+        self.assertTrue(torch.equal(demand[4:], torch.ones(2)))
+        self.assertTrue(torch.all(demand[1:] >= demand[:-1]))
+
+    def test_independent_branch_gates_apply_per_branch(self):
+        actor = make_actor(
+            self.base_path,
+            gate_mode="demand_only",
+            use_independent_branch_gates=True,
+            tracking_demand_mode="smoothstep",
+            tracking_demand_low=0.30,
+            tracking_demand_high=0.80,
+            dynamics_gate_scale=0.50,
+            tracking_gate_scale=1.0,
+            dynamics_confidence_gate_strength=0.0,
+        )
+        with torch.no_grad():
+            actor.adapter.dynamics_branch.net[-1].bias.fill_(0.4)
+            actor.adapter.tracking_branch.net[-1].bias.fill_(0.2)
+
+        obs = torch.zeros(3, TOTAL_OBS_DIM)
+        tracking = obs[:, actor.tracking_history_offset:].reshape(
+            3, HISTORY_LEN, ERROR_FRAME_DIM
+        )
+        tracking[:, -1].fill_(1.0)
+        diag = actor.action_diagnostics(obs)
+        self.assertTrue(torch.allclose(
+            diag["dynamics_gate"], torch.full((3,), 0.5)
+        ))
+        self.assertTrue(torch.equal(diag["tracking_gate"], torch.ones(3)))
+        expected = (
+            0.5 * diag["selected_delta_dyn"]
+            + diag["selected_delta_err"]
+        )
+        self.assertTrue(torch.allclose(diag["gated_delta"], expected))
+
+        tracking[:, -1].fill_(0.1)
+        low_error_diag = actor.action_diagnostics(obs)
+        self.assertTrue(torch.equal(
+            low_error_diag["tracking_gate"], torch.zeros(3)
+        ))
+        self.assertTrue(torch.equal(
+            low_error_diag["dynamics_gate"], torch.zeros(3)
+        ))
+        self.assertTrue(torch.equal(
+            low_error_diag["gated_delta"],
+            torch.zeros_like(low_error_diag["gated_delta"]),
+        ))
+
+    def test_demand_only_actor_fast_path_skips_wm_and_risk(self):
+        actor = make_actor(
+            self.base_path,
+            gate_mode="demand_only",
+            use_independent_branch_gates=True,
+            tracking_demand_mode="smoothstep",
+        )
+        obs = torch.randn(5, TOTAL_OBS_DIM)
+        with mock.patch.object(
+            actor, "predict_world_model_members",
+            side_effect=AssertionError("WM must not run on demand-only action path"),
+        ), mock.patch.object(
+            actor, "risk_logits",
+            side_effect=AssertionError("risk must not run on demand-only action path"),
+        ):
+            actor.actor_mean(obs)
+
+    def test_fast_action_matches_full_diagnostics(self):
+        actor = make_actor(
+            self.base_path,
+            gate_mode="demand_only",
+            use_independent_branch_gates=True,
+            tracking_demand_mode="smoothstep",
+        )
+        with torch.no_grad():
+            actor.adapter.dynamics_branch.net[-1].bias.fill_(0.4)
+            actor.adapter.tracking_branch.net[-1].bias.fill_(0.2)
+        obs = torch.randn(6, TOTAL_OBS_DIM)
+        base_action = actor.base_action(obs)
+        expected = actor.action_diagnostics(
+            obs, base_action=base_action
+        )["applied_delta"]
+        actual = actor.action_delta(obs, base_action=base_action)
+        self.assertTrue(torch.allclose(actual, expected))
 
     def test_gate_off_matches_dual_formula(self):
         actor = make_actor(self.base_path, gate_mode="off")

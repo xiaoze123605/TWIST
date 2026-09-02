@@ -47,6 +47,7 @@ from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV3Cfg, G1
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV4Cfg, G1MimicStuAnyAdapterV4CfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterDualCfg, G1MimicStuAnyAdapterDualCfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterDTERACfg, G1MimicStuAnyAdapterDTERACfgPPO
+from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterDTERASelectiveCfg, G1MimicStuAnyAdapterDTERASelectiveCfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV5Cfg, G1MimicStuAnyAdapterV5CfgPPO
 from .g1.g1_mimic_distill_anyadapter_config import G1MimicStuAnyAdapterV6Cfg, G1MimicStuAnyAdapterV6CfgPPO
 
@@ -69,5 +70,6 @@ task_registry.register("g1_stu_anyadapter_v3", G1MimicDistill, G1MimicStuAnyAdap
 task_registry.register("g1_stu_anyadapter_v4", G1MimicDistill, G1MimicStuAnyAdapterV4Cfg(), G1MimicStuAnyAdapterV4CfgPPO())
 task_registry.register("g1_stu_anyadapter_dual", G1MimicDistill, G1MimicStuAnyAdapterDualCfg(), G1MimicStuAnyAdapterDualCfgPPO())
 task_registry.register("g1_stu_anyadapter_dtera", G1MimicDistill, G1MimicStuAnyAdapterDTERACfg(), G1MimicStuAnyAdapterDTERACfgPPO())
+task_registry.register("g1_stu_anyadapter_dtera_selective", G1MimicDistill, G1MimicStuAnyAdapterDTERASelectiveCfg(), G1MimicStuAnyAdapterDTERASelectiveCfgPPO())
 task_registry.register("g1_stu_anyadapter_v5", G1MimicDistill, G1MimicStuAnyAdapterV5Cfg(), G1MimicStuAnyAdapterV5CfgPPO())
 task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdapterV6Cfg(), G1MimicStuAnyAdapterV6CfgPPO())

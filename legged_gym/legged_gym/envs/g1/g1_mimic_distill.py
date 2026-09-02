@@ -111,13 +111,29 @@ class G1MimicDistill(AnyAdapterHistoryMixin, HumanoidMimic):
 
     def _reset_ref_motion(self, env_ids, motion_ids=None):
         n = len(env_ids)
-        if motion_ids is None:
+        fixed_motion_ids = getattr(self, "_eval_scenario_motion_ids", None)
+        fixed_motion_times = getattr(self, "_eval_scenario_motion_times", None)
+        if fixed_motion_ids is not None:
+            # Evaluation-only replay hook. Normal training never defines these
+            # tensors. It prevents action-dependent episode termination from
+            # consuming a different motion RNG sequence in each ablation mode.
+            motion_ids = fixed_motion_ids[env_ids]
+            motion_times = fixed_motion_times[env_ids]
+        elif motion_ids is None:
             motion_ids = self._motion_lib.sample_motions(n, motion_difficulty=self.motion_difficulty)
-        
-        if self._rand_reset:
-            motion_times = self._motion_lib.sample_time(motion_ids)
+            if self._rand_reset:
+                motion_times = self._motion_lib.sample_time(motion_ids)
+            else:
+                motion_times = torch.zeros(
+                    motion_ids.shape, device=self.device, dtype=torch.float
+                )
         else:
-            motion_times = torch.zeros(motion_ids.shape, device=self.device, dtype=torch.float)
+            if self._rand_reset:
+                motion_times = self._motion_lib.sample_time(motion_ids)
+            else:
+                motion_times = torch.zeros(
+                    motion_ids.shape, device=self.device, dtype=torch.float
+                )
         
         self._motion_ids[env_ids] = motion_ids
         self._motion_time_offsets[env_ids] = motion_times
