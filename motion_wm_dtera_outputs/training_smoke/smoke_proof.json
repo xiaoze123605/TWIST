@@ -1,0 +1,15 @@
+{
+  "task": "g1_motion_wm_dtera",
+  "iterations": 2,
+  "environments": 2,
+  "restored_frames": 50,
+  "wm_weights_unchanged": true,
+  "base_weights_unchanged": true,
+  "adapter_weights_changed": true,
+  "wm_has_no_grad": true,
+  "policy_obs_dim": 3695,
+  "finite_observations": true,
+  "clean_reward_buffers_unchanged_by_pipeline": true,
+  "motion": "/home/hank/TWIST（anyadapter）/track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "seed": 42
+}
