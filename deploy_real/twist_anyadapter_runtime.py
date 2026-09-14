@@ -100,6 +100,7 @@ class AnyAdapterRuntime:
             )
 
     def reset(self):
+        self.last_policy_obs = None
         self.history[:] = 0.0
         self.tracking_error_history[:] = 0.0
         self._tracking_prev_ref_dof_pos[:] = 0.0
@@ -285,6 +286,7 @@ class AnyAdapterRuntime:
             base_obs, adapter_context, **tracking_inputs
         )
         obs_t = torch.from_numpy(obs).float().to(self.device).unsqueeze(0)
+        self.last_policy_obs = obs.copy()
         action = self.policy(obs_t).squeeze(0).detach().cpu().numpy().astype(np.float32)
         action = action.reshape(-1)
         if action.shape[0] != self.cfg.num_actions:

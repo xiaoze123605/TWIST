@@ -314,6 +314,7 @@ def main():
     parser.add_argument("--dynamics_branch_gain", type=float, default=DYNAMICS_BRANCH_GAIN)
     parser.add_argument("--tracking_branch_gain", type=float, default=TRACKING_BRANCH_GAIN)
     parser.add_argument("--num_verify_samples", type=int, default=8)
+    parser.add_argument("--branch_mode", choices=["full", "dyn_only", "err_only"], default="full")
     args = parser.parse_args()
 
     if args.out is None:
@@ -327,6 +328,7 @@ def main():
     check_base_actor_matches(model, state)
     loaded = load_strict(model, state)
     model.eval()
+    model.adapter_branch_mode = args.branch_mode
 
     adapter_keys = [k for k in loaded if k.startswith("adapter.")]
     adapter_norm = sum(
@@ -349,11 +351,19 @@ def main():
             obs = obs.reshape(-1, POLICY_OBS_DIM)
             return self.ac.act_inference(obs)
 
+        def diagnostics(self, obs):
+            obs = obs.reshape(-1, POLICY_OBS_DIM)
+            values = self.ac.action_diagnostics(obs)
+            return {k: v for k, v in values.items() if isinstance(v, torch.Tensor)}
+
     actor = ActorOnly(model).to(args.device).eval()
     example = torch.zeros(1, POLICY_OBS_DIM, device=args.device)
-    traced = torch.jit.trace(actor, example)
+    traced = torch.jit.trace_module(actor, {"forward": example, "diagnostics": example}, strict=False)
 
     verify_traced(actor, model, traced, args, args.device)
+    with torch.no_grad():
+        diagnostic = traced.diagnostics(example)
+        torch.testing.assert_close(traced(example), diagnostic["base_action"] + model.adapter_gain * diagnostic["applied_delta"])
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     traced.save(args.out)

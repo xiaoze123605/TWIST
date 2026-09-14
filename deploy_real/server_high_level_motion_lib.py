@@ -121,9 +121,10 @@ def build_mimic_obs(
             root_vel.detach().cpu().numpy().squeeze(), root_ang_vel.detach().cpu().numpy().squeeze()
 
 
-def process_mimic_reference(mimic_obs, reference_mode, corruptor=None, refiner=None):
+def process_mimic_reference(mimic_obs, reference_mode, corruptor=None, refiner=None, trace=None):
     """Apply the demo pipeline while leaving the two wrist-roll values untouched."""
     reference_31d, wrists = remove_wrist_roll(mimic_obs)
+    corrupted = reference_31d.copy()
     if reference_mode == "clean":
         processed = reference_31d
     else:
@@ -138,10 +139,15 @@ def process_mimic_reference(mimic_obs, reference_mode, corruptor=None, refiner=N
             processed = refiner.refine(corrupted)
         else:
             raise ValueError(f"unknown reference mode: {reference_mode}")
+    if trace is not None:
+        trace.update(clean=reference_31d.tolist(), corrupt=wrap_reference_yaw(corrupted).tolist(),
+                     wm=processed.tolist() if reference_mode == "wm" else None)
     return reinsert_wrist_roll(processed, wrists)
 
 
 def main(args, xml_file, robot_base):
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     if args.motion_speed <= 0.0:
         raise ValueError("--motion-speed must be > 0")
     if not (0.0 <= args.motion_scale <= 1.0):
@@ -173,12 +179,14 @@ def main(args, xml_file, robot_base):
             print(f"Motor ID {i}: {motor_name}")
             
     # 1. Connect to Redis
-    redis_client = redis.Redis(host="localhost", port=6379, db=0)
+    redis_client = redis.Redis(host="localhost", port=args.redis_port, db=0)
     redis_client.ping()
     sim_ready_key = f"sim_ready_{args.robot}"
     if args.wait_for_sim_ready:
         redis_client.delete(sim_ready_key)
         redis_client.delete(f"action_mimic_frame_{args.robot}")
+        redis_client.delete(f"action_mimic_{args.robot}", f"action_mimic_clean_{args.robot}",
+                            f"action_mimic_trace_{args.robot}")
 
     # 2. Load motion library
     device = (
@@ -307,12 +315,16 @@ def main(args, xml_file, robot_base):
                     mimic_obs - DEFAULT_MIMIC_OBS[args.robot]
                 )
                 clean_mimic_obs = mimic_obs.copy()
+                reference_trace = {}
+                wm_start = time.perf_counter()
                 mimic_obs = process_mimic_reference(
                     mimic_obs,
                     args.reference_mode,
                     corruptor=corruptor,
                     refiner=refiner,
+                    trace=reference_trace,
                 )
+                reference_trace["reference_pipeline_ms"] = (time.perf_counter() - wm_start) * 1000
                 if vis_root_vel:
                     root_vel_list.append(root_vel)
                 if vis_root_ang_vel:
@@ -324,6 +336,7 @@ def main(args, xml_file, robot_base):
                     f"action_mimic_{args.robot}": json.dumps(mimic_obs_list),
                     f"action_mimic_clean_{args.robot}": json.dumps(clean_mimic_obs.tolist()),
                     f"action_mimic_frame_{args.robot}": global_frame_id,
+                    f"action_mimic_trace_{args.robot}": json.dumps(reference_trace),
                 })
                 redis_client.set(f"action_hand_{args.robot}", json.dumps(DEFAULT_ACTION_HAND[args.robot].tolist()))
                 last_mimic_obs = mimic_obs
@@ -408,6 +421,7 @@ def main(args, xml_file, robot_base):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--redis-port", type=int, default=6379)
     parser.add_argument("--motion_file", help="Path to your *.pkl motion file for MotionLib", 
                         default=os.path.join(REPO_ROOT, "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl"))
     parser.add_argument("--robot", type=str, default="g1", choices=["g1"])

@@ -309,11 +309,14 @@ class RealTimePolicyController:
                  metrics_out=None,
                  sim_duration=100000.0,
                  headless=False,
-                 sync_reference=False):
+                 sync_reference=False,
+                 trace_out=None,
+                 require_dtera=False,
+                 redis_port=6379):
 
         self.redis_client = None
         try:
-            self.redis_client = redis.Redis(host='localhost', port=6379, db=0)
+            self.redis_client = redis.Redis(host='localhost', port=redis_port, db=0)
         except Exception as e:
             print(f"Error connecting to Redis: {e}")
 
@@ -325,6 +328,12 @@ class RealTimePolicyController:
             policy_path, device, use_anyadapter, self.policy_obs_dim
         )
         self.use_dtera = self.policy_obs_dim == DTERA_OBS_DIM
+        if require_dtera and not self.use_dtera:
+            raise ValueError("DTERA required: policy must accept exactly 3695 dimensions")
+        self.trace_out = trace_out
+        self.trace_rows = []
+        if trace_out and (not sync_reference or not metrics_out):
+            raise ValueError("Per-frame trace requires sync-reference and metrics_out")
         self.use_any2track = self.policy_obs_dim == ANY2TRACK_OBS_DIM
         self.anyadapter_context_dim = (
             2 if self.policy_obs_dim == ANYADAPTER_HEADING_OBS_DIM else 0
@@ -560,6 +569,13 @@ class RealTimePolicyController:
         mujoco.mj_forward(self.model, self.data)
        
     def run(self):
+        self.last_action[:] = 0
+        self.proprio_history_buf.clear()
+        for _ in range(10):
+            self.proprio_history_buf.append(np.zeros(self.n_proprio))
+        self.trace_rows = []
+        if self.metrics is not None:
+            self.metrics = MotionDemoMetrics()
         # Optionally record video
         if self.record_video:
             import imageio
@@ -614,8 +630,8 @@ class RealTimePolicyController:
                         self.redis_client.set("sim_ready_g1", frame_id)
                         deadline = time.monotonic() + 30.0
                         while True:
-                            raw, clean_raw, received = self.redis_client.mget(
-                                "action_mimic_g1", "action_mimic_clean_g1", "action_mimic_frame_g1"
+                            raw, clean_raw, received, trace_raw = self.redis_client.mget(
+                                "action_mimic_g1", "action_mimic_clean_g1", "action_mimic_frame_g1", "action_mimic_trace_g1"
                             )
                             if received is not None and int(received) == frame_id:
                                 break
@@ -658,6 +674,7 @@ class RealTimePolicyController:
                     self.proprio_history_buf.append(obs_full)
 
                     obs_tensor = torch.from_numpy(obs_buf).float().unsqueeze(0).to(self.device)
+                    inference_start = time.perf_counter()
                     with torch.no_grad():
                         if self.use_anyadapter:
                             adapter_context = None
@@ -694,6 +711,26 @@ class RealTimePolicyController:
                             )
                         else:
                             raw_action = self.policy(obs_tensor).cpu().numpy().squeeze()
+
+                    inference_ms = (time.perf_counter() - inference_start) * 1000
+                    if self.trace_out:
+                        if not self.sync_reference:
+                            raise ValueError("--trace_out requires --sync-reference")
+                        row = json.loads(trace_raw)
+                        row.update(frame_id=frame_id, processed=action_mimic.tolist(),
+                                   joint=body_dof_pos.tolist(), joint_velocity=body_dof_vel.tolist(),
+                                   qpos=self.data.qpos.tolist(), qvel=self.data.qvel.tolist(),
+                                   rpy=rpy.tolist(), height=float(self.data.xpos[self.model.body("pelvis").id][2]),
+                                   root_velocity=root_velocity.tolist(), final_action=raw_action.tolist(),
+                                   inference_ms=inference_ms)
+                        if self.use_dtera:
+                            runtime = self.anyadapter_runtime
+                            with torch.no_grad():
+                                diag = runtime.policy.diagnostics(torch.from_numpy(runtime.last_policy_obs).to(self.device).unsqueeze(0))
+                            row["dtera"] = {k: v.detach().cpu().numpy().reshape(-1).tolist() for k, v in diag.items()}
+                            row["dynamics_history"] = runtime.history.tolist()
+                            row["tracking_history"] = runtime.tracking_error_history.tolist()
+                        self.trace_rows.append(row)
 
                     self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
@@ -734,6 +771,11 @@ class RealTimePolicyController:
             print(f"Error in run: {e}")
             raise
         finally:
+            if self.trace_out:
+                os.makedirs(os.path.dirname(os.path.abspath(self.trace_out)), exist_ok=True)
+                with open(self.trace_out, "w") as stream:
+                    for row in self.trace_rows:
+                        stream.write(json.dumps(row) + "\n")
             if mp4_writer is not None:
                 print(f"Rendering {len(video_frames)} cached video frames...")
                 video_renderer = mujoco.Renderer(self.model, height=480, width=640)
@@ -759,6 +801,8 @@ class RealTimePolicyController:
 
 
 def main_low_level_sim(args):
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     controller = RealTimePolicyController(
         xml_file=args.xml_file,
         policy_path=args.policy_path,
@@ -773,12 +817,17 @@ def main_low_level_sim(args):
         sim_duration=args.sim_duration,
         headless=args.headless,
         sync_reference=args.sync_reference,
+        trace_out=args.trace_out,
+        require_dtera=args.require_dtera,
+        redis_port=args.redis_port,
     )
     controller.run()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--redis-port", type=int, default=6379)
     HERE = os.path.dirname(os.path.abspath(__file__))
     
     parser.add_argument("--xml_file", default=os.path.join(HERE, "../assets/g1/g1_sim2sim_with_wrist_roll.xml"), help="Mujoco XML file")
@@ -786,7 +835,7 @@ if __name__ == "__main__":
     parser.add_argument("--policy_path",  help="Path to the policy",
                         default=os.path.join(
                             HERE,
-                            "../legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt",
+                            "../motion_wm_dtera_outputs/single/policies/demand_only.pt",
                         ))
     parser.add_argument(
         "--device",
@@ -795,6 +844,8 @@ if __name__ == "__main__":
     )
                         
     parser.add_argument("--record_video", action="store_true", help="Record a video")
+    parser.add_argument("--trace_out", default=None)
+    parser.add_argument("--require-dtera", action="store_true")
     parser.add_argument("--sync-reference", action="store_true", help="Request each motion frame exactly once for paired comparisons.")
     parser.add_argument(
         "--video_path",

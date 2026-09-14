@@ -115,9 +115,43 @@ CKPT=legged_gym/logs/g1_twist_dtera_revision4/dtera_revision4_frozen_output_bias
 
 输出：`<run_dir>/traced/<run>-<迭代>-dtera-<gate_mode>-jit.pt`
 
-注意：DTERA 的 3695 维观测不在 deploy server 的探测列表
-（1155/2635/2637/7001）里，server 会报告无法识别而不是误判；导出文件自带
-维度守卫，只接受 3695 维输入，可直接在仿真/自定义加载器中使用。
+部署服务器支持 3695 维检测；启用时必须打印
+`[DTERA] Detected 3695-D dual-history policy`。
+使用 `--require-dtera` 可以拒绝误加载普通 TWIST 或 AnyAdapter。
+
+### Motion-WM + DTERA 配对实验
+
+```bash
+PY=/home/hank/anaconda3/envs/twist/bin/python
+"$PY" tools/run_motion_wm_dtera.py --out motion_wm_dtera_outputs/single
+"$PY" tools/summarize_motion_wm_dtera.py motion_wm_dtera_outputs/single
+"$PY" tools/run_motion_wm_dtera.py --multi --out motion_wm_dtera_outputs/multi
+"$PY" tools/summarize_motion_wm_dtera.py motion_wm_dtera_outputs/multi
+```
+
+每个输出目录必须是新的实验目录。运行器导出同一个 model_4800 checkpoint，
+先使用训练配置 demand_only/增益 1.0/残差尺度 0.03，按固定次序运行 A–E 和
+gate-off、demand-only（复用 D）、demand+confidence、full、dyn-only、err-only。
+后两种门控消融显式将 confidence strength 设为 1，以实际启用 confidence。
+普通 TWIST 仅作为 A/B 对照，最终集成方案为 D：Motion-WM + DTERA。
+模拟器默认策略为 `motion_wm_dtera_outputs/single/policies/demand_only.pt`，需先导出。
+
+每轮启动独立 localhost Redis 实例，每组启动新高/低层进程并重置 frame id、
+参考缓存、MuJoCo、TWIST history、两类 DTERA history。前 24 帧 WM 透传污染参考，
+DTERA 仍每帧运行并更新两类历史。clean reference 只用于评价；DTERA tracking
+history 始终使用 `processed`，即实际进入策略的 31 维参考。
+
+JIT 的 `diagnostics` 方法记录两支路修正及 demand/confidence/risk、安全门和最终门。
+`frames.jsonl` 记录机器人 qpos/qvel、参考、动作、完整 history；逐帧校验参考来源、
+history 移位、warmup 透传、corruption 序列一致和动作重构。未运行 WM 的组里 `wm`
+字段为 null。策略推理计时不包含额外诊断/Redis/JSON；参考管线单独计时。
+
+`summary.json` 分别包含全序列与去掉前 24 帧结果；`all_metrics.csv` 包含所有组，
+不筛选优胜动作。跌倒是 height<0.35m 或身体竖轴倾角>1rad 的代理指标；躺卧动作
+也可能触发，所以同时提供逐帧高度/姿态与视频，不能把它等同于人工确认的意外跌倒。
+多动作选择规则在 rollout 前固定：文件字典序、不同数据源、时长 4–10 秒，排除
+DTERA 配置 YAML 和 Motion-WM train/val 的动作组。“未见”不涵盖无法核验的原始
+冻结 TWIST 预训练数据，也不能排除源数据中的未标注动作别名。
 
 ## 训练与恢复（dual_formal_v2，wd 修复版）
 
