@@ -1,0 +1,37 @@
+{
+  "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+  "seed": 42,
+  "mode": "B",
+  "full_sequence": {
+    "frames": 291,
+    "joint_rmse": 0.19236500812705334,
+    "root_velocity_rmse": 0.23624823450695034,
+    "height_rmse": 0.030529638024691077,
+    "max_tilt": 0.2998954423605133,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 28.18972613942775,
+    "inference_ms_mean": 0.24549936424404054,
+    "inference_ms_p95": 0.3698290001921123,
+    "reference_pipeline_ms_mean": 0.5294026219679526,
+    "roll_rmse": 0.05933287156582059,
+    "pitch_rmse": 0.21189704223603673,
+    "yaw_rmse": 0.8311245184209377
+  },
+  "after_warmup": {
+    "frames": 267,
+    "joint_rmse": 0.18947254294408336,
+    "root_velocity_rmse": 0.21242141037996198,
+    "height_rmse": 0.031425565221996445,
+    "max_tilt": 0.2992661539204943,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 27.15700929635279,
+    "inference_ms_mean": 0.2282946853766463,
+    "inference_ms_p95": 0.35630790007417085,
+    "reference_pipeline_ms_mean": 0.5671864531537272,
+    "roll_rmse": 0.05480576317975382,
+    "pitch_rmse": 0.22044510450584098,
+    "yaw_rmse": 0.8661074721970125
+  }
+}

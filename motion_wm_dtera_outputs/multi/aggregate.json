@@ -1,0 +1,600 @@
+{
+  "aggregate": {
+    "full_sequence": {
+      "A": {
+        "frames": 340.6666666666667,
+        "joint_rmse": 0.28290981927351316,
+        "root_velocity_rmse": 0.3147652033099606,
+        "height_rmse": 0.11998651099145796,
+        "max_tilt": 0.9588828059429311,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.2749529190207156,
+        "action_rate_l2_per_second": 38.03009450639069,
+        "inference_ms_mean": 0.24971256259942048,
+        "inference_ms_p95": 0.4076744111115558,
+        "reference_pipeline_ms_mean": 0.06496471610947456,
+        "roll_rmse": 0.8598720158378724,
+        "pitch_rmse": 0.4836649784010454,
+        "yaw_rmse": 0.9707411440595709,
+        "episodes": 9
+      },
+      "B": {
+        "frames": 340.6666666666667,
+        "joint_rmse": 0.2781065560987123,
+        "root_velocity_rmse": 0.3054499250980199,
+        "height_rmse": 0.11939710272674191,
+        "max_tilt": 0.9408257437984068,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.2749529190207156,
+        "action_rate_l2_per_second": 38.089290389122816,
+        "inference_ms_mean": 0.25360851893595043,
+        "inference_ms_p95": 0.39324712769889114,
+        "reference_pipeline_ms_mean": 0.5337868261544075,
+        "roll_rmse": 0.8575751203801071,
+        "pitch_rmse": 0.48021012278217384,
+        "yaw_rmse": 1.1478942536755374,
+        "episodes": 9
+      },
+      "C": {
+        "frames": 340.6666666666667,
+        "joint_rmse": 0.28473902873094387,
+        "root_velocity_rmse": 0.3094667577803605,
+        "height_rmse": 0.12076943328771399,
+        "max_tilt": 0.9495163323610962,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.2749529190207156,
+        "action_rate_l2_per_second": 35.4067453390058,
+        "inference_ms_mean": 0.6696400593828784,
+        "inference_ms_p95": 0.9896142333925833,
+        "reference_pipeline_ms_mean": 0.070992756783926,
+        "roll_rmse": 0.8382479384641504,
+        "pitch_rmse": 0.4860953533273288,
+        "yaw_rmse": 0.9298062775055433,
+        "branch_cosine_mean": 0.1939493579062216,
+        "branch_cancellation_ratio": 0.19303505236749993,
+        "episodes": 9
+      },
+      "D": {
+        "frames": 340.6666666666667,
+        "joint_rmse": 0.2790171493685177,
+        "root_velocity_rmse": 0.3043361327603188,
+        "height_rmse": 0.12013152975597241,
+        "max_tilt": 0.9360759597608139,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.2749529190207156,
+        "action_rate_l2_per_second": 35.938310436592516,
+        "inference_ms_mean": 0.6822611818479856,
+        "inference_ms_p95": 1.1888176777802069,
+        "reference_pipeline_ms_mean": 0.5474711140337452,
+        "roll_rmse": 0.814059405463091,
+        "pitch_rmse": 0.46818630680468815,
+        "yaw_rmse": 0.970649449084683,
+        "branch_cosine_mean": 0.1893400598588093,
+        "branch_cancellation_ratio": 0.1868967880789385,
+        "episodes": 9
+      },
+      "E": {
+        "frames": 340.6666666666667,
+        "joint_rmse": 0.2799704663005748,
+        "root_velocity_rmse": 0.30255928386141934,
+        "height_rmse": 0.11800784022019584,
+        "max_tilt": 0.929128370566765,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.2768361581920904,
+        "action_rate_l2_per_second": 29.543759730521305,
+        "inference_ms_mean": 0.6768190883211687,
+        "inference_ms_p95": 1.1672175778130618,
+        "reference_pipeline_ms_mean": 0.023527826103422148,
+        "roll_rmse": 0.8610931231961362,
+        "pitch_rmse": 0.4848890546768355,
+        "yaw_rmse": 0.9531639478553738,
+        "branch_cosine_mean": 0.21811823883412065,
+        "branch_cancellation_ratio": 0.19287316463516918,
+        "episodes": 9
+      }
+    },
+    "after_warmup": {
+      "A": {
+        "frames": 316.6666666666667,
+        "joint_rmse": 0.27838642880832326,
+        "root_velocity_rmse": 0.3095711718019904,
+        "height_rmse": 0.10398479054259045,
+        "max_tilt": 0.9586862617843841,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.3060796645702306,
+        "action_rate_l2_per_second": 37.48722315780826,
+        "inference_ms_mean": 0.23412568178982043,
+        "inference_ms_p95": 0.387856433409676,
+        "reference_pipeline_ms_mean": 0.06434161666614284,
+        "roll_rmse": 0.8892005084111086,
+        "pitch_rmse": 0.48607299197186127,
+        "yaw_rmse": 1.0133708771264116,
+        "episodes": 9
+      },
+      "B": {
+        "frames": 316.6666666666667,
+        "joint_rmse": 0.2730902019945508,
+        "root_velocity_rmse": 0.2998690031030391,
+        "height_rmse": 0.10363831176445387,
+        "max_tilt": 0.940755822860627,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.3060796645702306,
+        "action_rate_l2_per_second": 37.560204482759175,
+        "inference_ms_mean": 0.23840200049515609,
+        "inference_ms_p95": 0.3850155387504451,
+        "reference_pipeline_ms_mean": 0.5714575597425171,
+        "roll_rmse": 0.8865619664113977,
+        "pitch_rmse": 0.48231916826392024,
+        "yaw_rmse": 1.197222436065652,
+        "episodes": 9
+      },
+      "C": {
+        "frames": 316.6666666666667,
+        "joint_rmse": 0.2804982107614129,
+        "root_velocity_rmse": 0.3047936638773758,
+        "height_rmse": 0.10487072339374269,
+        "max_tilt": 0.9485963759094379,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.3060796645702306,
+        "action_rate_l2_per_second": 34.601667978660856,
+        "inference_ms_mean": 0.6431982126246708,
+        "inference_ms_p95": 0.9731961556225441,
+        "reference_pipeline_ms_mean": 0.06993191292866732,
+        "roll_rmse": 0.8662828641763053,
+        "pitch_rmse": 0.4877912024852835,
+        "yaw_rmse": 0.969067696930794,
+        "branch_cosine_mean": 0.19748071951124638,
+        "branch_cancellation_ratio": 0.19623466313446636,
+        "episodes": 9
+      },
+      "D": {
+        "frames": 316.6666666666667,
+        "joint_rmse": 0.27410850070041565,
+        "root_velocity_rmse": 0.2990640613614774,
+        "height_rmse": 0.10420178664055374,
+        "max_tilt": 0.9351560033091558,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.3060796645702306,
+        "action_rate_l2_per_second": 35.17982261336736,
+        "inference_ms_mean": 0.658271269568074,
+        "inference_ms_p95": 1.1584739388758356,
+        "reference_pipeline_ms_mean": 0.5860426951853225,
+        "roll_rmse": 0.8400893329154819,
+        "pitch_rmse": 0.4679482100957292,
+        "yaw_rmse": 1.0124839751208456,
+        "branch_cosine_mean": 0.19278353683391403,
+        "branch_cancellation_ratio": 0.18952307364823012,
+        "episodes": 9
+      },
+      "E": {
+        "frames": 316.6666666666667,
+        "joint_rmse": 0.2754162726782735,
+        "root_velocity_rmse": 0.29729646724471437,
+        "height_rmse": 0.10276668444516096,
+        "max_tilt": 0.9265274708589367,
+        "fall_rate": 0.3333333333333333,
+        "fallen_frame_fraction": 0.3081761006289308,
+        "action_rate_l2_per_second": 28.69126548408191,
+        "inference_ms_mean": 0.6548562456006412,
+        "inference_ms_p95": 1.150678327859269,
+        "reference_pipeline_ms_mean": 0.023470140571738827,
+        "roll_rmse": 0.890101174209551,
+        "pitch_rmse": 0.48530033286474716,
+        "yaw_rmse": 0.9953126653060242,
+        "branch_cosine_mean": 0.22483661364418017,
+        "branch_cancellation_ratio": 0.1957982990915067,
+        "episodes": 9
+      }
+    }
+  },
+  "paired": [
+    {
+      "window": "full_sequence",
+      "comparison": "B vs A",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 1.005343992374978
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 0.9395898622515183
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 1.1684307373644311
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 2.1979642034571873
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.06053926378894
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 2.971687014880923
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 0.6372408074273107
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 4.758744940234572
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 2.2818570704310117
+        }
+      ]
+    },
+    {
+      "window": "full_sequence",
+      "comparison": "C vs A",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.9613564821020321
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 0.7987248921302066
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -3.222883994502595
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.9150421534921541
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.7781410293020098
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.4670505314057163
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.2572304398943827
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.397926755647894
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 0.6651830877027328
+        }
+      ]
+    },
+    {
+      "window": "full_sequence",
+      "comparison": "D vs B",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.09645876406914078
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 1.6374457823672095
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.363277823409216
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.7097790372805491
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.7036439780706857
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.1915877581094667
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.07249623743705641
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.4520659720511869
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.715600617741794
+        }
+      ]
+    },
+    {
+      "window": "full_sequence",
+      "comparison": "D vs C",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 1.8533937320159495
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 1.7771197759308621
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 2.9489254202046036
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 2.3968954054964526
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.13293791045491
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 3.2350995024141516
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 0.8203268551154501
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 1.977688398354486
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -0.06017938410254946
+        }
+      ]
+    },
+    {
+      "window": "after_warmup",
+      "comparison": "B vs A",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 1.1613394378036361
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 1.083407713402553
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 1.3449092791610489
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 2.4593028932412757
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.3021813523637404
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 3.3160582240820005
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 0.6951130307966455
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 5.16818301520142
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 2.500120166610304
+        }
+      ]
+    },
+    {
+      "window": "after_warmup",
+      "comparison": "C vs A",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -1.177500796976563
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 0.8967540364583823
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -3.726844092007468
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -1.1014794877088452
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.9226418303933739
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.6872804667715997
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.1771142041665731
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.7282717325696435
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 0.850274542003027
+        }
+      ]
+    },
+    {
+      "window": "after_warmup",
+      "comparison": "D vs B",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.18266228513138688
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 1.8697609920369698
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.6023163728409975
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": -0.8808128128536266
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.8461051434508343
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.3942584105551799
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 0.025880331082008306
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": -0.3573975016694228
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -1.759377096319792
+        }
+      ]
+    },
+    {
+      "window": "after_warmup",
+      "comparison": "D vs C",
+      "pairs": [
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 2.1331810548818493
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.054582081923217
+        },
+        {
+          "motion": "accad/A10__Lie_to_crouch.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 3.365557614777917
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 2.6721977134028863
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.3762724306905394
+        },
+        {
+          "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+          "seed": 44,
+          "joint_improvement_pct": 3.594662660076782
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 42,
+          "joint_improvement_pct": 0.8963401228163108
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 43,
+          "joint_improvement_pct": 2.159913034714592
+        },
+        {
+          "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+          "seed": 44,
+          "joint_improvement_pct": -0.06610702129323388
+        }
+      ]
+    }
+  ]
+}

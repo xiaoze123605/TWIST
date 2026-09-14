@@ -1,0 +1,20 @@
+{
+  "frames": 236,
+  "joint_rmse": 0.4628444474085508,
+  "joint_mae": 0.34805145047940217,
+  "max_joint_error": 1.8793927431106567,
+  "root_error": 1.5116257699174835,
+  "root_velocity_rmse": 0.45249164038996553,
+  "minimum_pelvis_height": 0.16223916610608594,
+  "maximum_abs_roll": 3.139613931409553,
+  "maximum_abs_pitch": 1.5625748884841033,
+  "max_tilt": 3.139613931409553,
+  "root_height_error": 0.290076856004212,
+  "root_height_mae": 0.24119255699879977,
+  "roll_error": 2.217536627837291,
+  "roll_mae": 2.080982226945222,
+  "pitch_error": 1.0941140473892035,
+  "pitch_mae": 0.9809038164860343,
+  "yaw_error": 1.7150367477785555,
+  "yaw_mae": 1.5034966316063163
+}

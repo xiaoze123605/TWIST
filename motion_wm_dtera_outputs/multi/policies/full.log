@@ -1,0 +1,18 @@
+legged_gym/scripts/export_twist_dtera_jit.py:325: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(args.ckpt, map_location=args.device)
+[load] strict load OK: 60 inference keys (12 adapter keys, adapter weight L2 norm = 3.4441)
+[load] gate_mode=full, independent_branch_gates=False, tracking_demand_mode=legacy_exp, confidence_gate_strength=1
+/home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_anyadapter.py:484: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  if hist_flat.numel() == 0:
+/home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_dtera.py:398: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  if observations.shape[-1] < end:
+/home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_dtera.py:566: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  if member_predictions.shape[0] == 1:
+/home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_dtera.py:387: TracerWarning: Converting a tensor to a Python number might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+  iteration = int(self.residual_training_iteration.item())
+[verify] traced vs eager max abs diff: 0.000e+00
+[verify] max |delta| = 0.0031 (bound = 0.0600)
+[verify] mean |delta_dyn| = 0.0050, mean |delta_err| = 0.0131, mean gate = 0.0148, mean |applied delta| = 0.0003
+[verify] residual_training_iteration = 4800, residual warmup factor = 1.0000 (warmup iters = 1000)
+Saved DTERA JIT actor to /home/hank/TWIST（anyadapter）/motion_wm_dtera_outputs/multi/policies/full.pt
+gate_mode=full, adapter_gain=1.0, dynamics_delta_scale=0.03, tracking_delta_scale=0.03, dynamics_branch_gain=1.0, tracking_branch_gain=1.0

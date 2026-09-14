@@ -1,0 +1,10 @@
+108168:C 14 Sep 2026 09:58:29.541 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+108168:C 14 Sep 2026 09:58:29.541 # Redis version=6.0.16, bits=64, commit=00000000, modified=0, pid=108168, just started
+108168:C 14 Sep 2026 09:58:29.541 # Configuration loaded
+108168:M 14 Sep 2026 09:58:29.541 * Running mode=standalone, port=38513.
+108168:M 14 Sep 2026 09:58:29.541 # Server initialized
+108168:M 14 Sep 2026 09:58:29.541 # WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+108168:M 14 Sep 2026 09:58:29.542 * Ready to accept connections
+108168:signal-handler (1789351578) Received SIGTERM scheduling shutdown...
+108168:M 14 Sep 2026 10:06:18.311 # User requested shutdown...
+108168:M 14 Sep 2026 10:06:18.311 # Redis is now ready to exit, bye bye...

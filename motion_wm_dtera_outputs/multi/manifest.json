@@ -1,0 +1,67 @@
+{
+  "motions": [
+    "accad/A10__Lie_to_crouch.pkl",
+    "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+    "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl"
+  ],
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "modes": [
+    [
+      "A",
+      "corrupt",
+      "twist"
+    ],
+    [
+      "B",
+      "wm",
+      "twist"
+    ],
+    [
+      "C",
+      "corrupt",
+      "demand_only"
+    ],
+    [
+      "D",
+      "wm",
+      "demand_only"
+    ],
+    [
+      "E",
+      "clean",
+      "demand_only"
+    ]
+  ],
+  "preset": "formal",
+  "motion_speed": 1,
+  "motion_scale": 1,
+  "hip_yaw_scale": 1,
+  "warmup_frames": 24,
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/g1_twist_dtera_revision4/dtera_revision4_frozen_output_bias_overnight/model_4800.pt",
+  "checkpoint_sha256": "caf4c74e0ec3e86b411c9ac954c9c0e8bb919369fcd5fd9dbbb232037f4ec1cd",
+  "twist_sha256": "f7d34dd2bc0b278cd4da33811dc8218e65da306a83d5c62f6fd12c1dc8202ef0",
+  "wm_sha256": "187c11b128cbf1a6c095edcf1e3e8291fef76b63c03639f1d5618285f83afd99",
+  "training_gate": {
+    "gate_mode": "demand_only",
+    "confidence_gate_strength": 0.0,
+    "adapter_gain": 1.0,
+    "dynamics_branch_gain": 1.0,
+    "tracking_branch_gain": 1.0,
+    "dynamics_delta_scale": 0.03,
+    "tracking_delta_scale": 0.03
+  },
+  "code_sha256": {
+    "deploy_real/server_high_level_motion_lib.py": "b2bd2660feb24c1744d1b8cc802e5948092aba77e8b1f6f789e05eee3abda7c6",
+    "deploy_real/server_low_level_g1_sim.py": "1eb438dd2c3463ace2de6b7642e81918d5c45811d3f4c02886349669b4e91656",
+    "deploy_real/twist_anyadapter_runtime.py": "48ddc2b67a8370483dce0d88e92b3e987355a81b59d0fd0ac1a011222fabe9df",
+    "legged_gym/scripts/export_twist_dtera_jit.py": "c674f982d16c001d6dafb1fd34960cfe8b2fb6fba6af39a00bde02566acd33de"
+  },
+  "unseen_scope": "Multi: group absent from configured DTERA twist_dataset.yaml and Motion-WM train/val manifests; frozen original TWIST pretraining provenance unavailable",
+  "selection_rule": "Multi: lexicographic files, first eligible file per source collection, 4\u201310 seconds, three collections; no pose/performance filter",
+  "fall_definition": "episode has height < 0.35 m or vertical-axis tilt > 1.0 rad",
+  "full_definition": "D retains training demand_only; D_full activates confidence and risk"
+}

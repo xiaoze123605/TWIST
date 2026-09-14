@@ -1,0 +1,41 @@
+{
+  "motion": "biomotionlab_ntroje/rub001_0009_sitting1.pkl",
+  "seed": 44,
+  "mode": "C",
+  "full_sequence": {
+    "frames": 291,
+    "joint_rmse": 0.19774454260004884,
+    "root_velocity_rmse": 0.25117997747418025,
+    "height_rmse": 0.031829788813346895,
+    "max_tilt": 0.33403383035200795,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 27.95612410673693,
+    "inference_ms_mean": 0.6638818247484494,
+    "inference_ms_p95": 0.8524579998265835,
+    "reference_pipeline_ms_mean": 0.0690338831966286,
+    "roll_rmse": 0.06611008185972138,
+    "pitch_rmse": 0.22378200160502082,
+    "yaw_rmse": 0.9734371010288994,
+    "branch_cosine_mean": 0.21154260930123764,
+    "branch_cancellation_ratio": 0.19578363160843815
+  },
+  "after_warmup": {
+    "frames": 267,
+    "joint_rmse": 0.1960231184584747,
+    "root_velocity_rmse": 0.22967280168448498,
+    "height_rmse": 0.03279869843371865,
+    "max_tilt": 0.33360284797702966,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 26.66335753829478,
+    "inference_ms_mean": 0.6403567003837949,
+    "inference_ms_p95": 0.8474667997688812,
+    "reference_pipeline_ms_mean": 0.06851213112575297,
+    "roll_rmse": 0.06335981556607444,
+    "pitch_rmse": 0.23215742860151406,
+    "yaw_rmse": 1.015403201052032,
+    "branch_cosine_mean": 0.18755164022554685,
+    "branch_cancellation_ratio": 0.2046330708348021
+  }
+}

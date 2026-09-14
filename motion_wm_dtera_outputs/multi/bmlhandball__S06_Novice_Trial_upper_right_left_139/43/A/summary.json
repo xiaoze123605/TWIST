@@ -1,0 +1,37 @@
+{
+  "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+  "seed": 43,
+  "mode": "A",
+  "full_sequence": {
+    "frames": 495,
+    "joint_rmse": 0.1944968521762428,
+    "root_velocity_rmse": 0.3220471888327699,
+    "height_rmse": 0.03586391393101366,
+    "max_tilt": 0.8751876895046724,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 42.184930004548406,
+    "inference_ms_mean": 0.2409852404048022,
+    "inference_ms_p95": 0.3869342001053153,
+    "reference_pipeline_ms_mean": 0.06397599798660711,
+    "roll_rmse": 0.23417917531677374,
+    "pitch_rmse": 0.16346074508854935,
+    "yaw_rmse": 0.7088784219057066
+  },
+  "after_warmup": {
+    "frames": 471,
+    "joint_rmse": 0.19153045907238847,
+    "root_velocity_rmse": 0.32896199739860865,
+    "height_rmse": 0.03671792993208177,
+    "max_tilt": 0.8751876895046724,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 41.24389631126081,
+    "inference_ms_mean": 0.2321747048829525,
+    "inference_ms_p95": 0.3776205003305222,
+    "reference_pipeline_ms_mean": 0.06328837791864175,
+    "roll_rmse": 0.23626951059613538,
+    "pitch_rmse": 0.15804782459463013,
+    "yaw_rmse": 0.7223667441391666
+  }
+}

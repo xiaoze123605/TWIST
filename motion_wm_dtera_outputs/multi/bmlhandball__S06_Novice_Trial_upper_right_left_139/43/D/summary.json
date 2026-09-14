@@ -1,0 +1,41 @@
+{
+  "motion": "bmlhandball/S06_Novice_Trial_upper_right_left_139.pkl",
+  "seed": 43,
+  "mode": "D",
+  "full_sequence": {
+    "frames": 495,
+    "joint_rmse": 0.18607865569048906,
+    "root_velocity_rmse": 0.22772118591365306,
+    "height_rmse": 0.03787203708784351,
+    "max_tilt": 0.6355932219052253,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 36.83349170243368,
+    "inference_ms_mean": 0.6894709798044377,
+    "inference_ms_p95": 1.2708326002211814,
+    "reference_pipeline_ms_mean": 0.5405966666799169,
+    "roll_rmse": 0.22616179262246439,
+    "pitch_rmse": 0.13769138578770762,
+    "yaw_rmse": 0.610578260305362,
+    "branch_cosine_mean": 0.2295079101048846,
+    "branch_cancellation_ratio": 0.16745221032180024
+  },
+  "after_warmup": {
+    "frames": 471,
+    "joint_rmse": 0.18228096198463759,
+    "root_velocity_rmse": 0.23163427666639785,
+    "height_rmse": 0.03876760539170326,
+    "max_tilt": 0.6355932219052253,
+    "fall_rate": 0.0,
+    "fallen_frame_fraction": 0.0,
+    "action_rate_l2_per_second": 35.66588274142718,
+    "inference_ms_mean": 0.6712475966069062,
+    "inference_ms_p95": 1.235657000052015,
+    "reference_pipeline_ms_mean": 0.5638605456636232,
+    "roll_rmse": 0.22758860243519136,
+    "pitch_rmse": 0.1271700189700601,
+    "yaw_rmse": 0.6209977807515037,
+    "branch_cosine_mean": 0.22222523444707165,
+    "branch_cancellation_ratio": 0.168203242224368
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "motion": "accad/A10__Lie_to_crouch.pkl",
+  "seed": 43,
+  "mode": "D",
+  "full_sequence": {
+    "frames": 236,
+    "joint_rmse": 0.45098799090876424,
+    "root_velocity_rmse": 0.4393903249930202,
+    "height_rmse": 0.2898594452125542,
+    "max_tilt": 1.8112274355380926,
+    "fall_rate": 1.0,
+    "fallen_frame_fraction": 0.8135593220338984,
+    "action_rate_l2_per_second": 23.025588464447072,
+    "inference_ms_mean": 0.6751977796477026,
+    "inference_ms_p95": 1.201673249624946,
+    "reference_pipeline_ms_mean": 0.5346090127135293,
+    "roll_rmse": 1.8425943600535903,
+    "pitch_rmse": 0.9620328596591917,
+    "yaw_rmse": 1.7569231279670299,
+    "branch_cosine_mean": 0.17701548916508045,
+    "branch_cancellation_ratio": 0.14367549284816217
+  },
+  "after_warmup": {
+    "frames": 212,
+    "joint_rmse": 0.4415961450201519,
+    "root_velocity_rmse": 0.4412654808087884,
+    "height_rmse": 0.2380223286141062,
+    "max_tilt": 1.8112274355380926,
+    "fall_rate": 1.0,
+    "fallen_frame_fraction": 0.9056603773584906,
+    "action_rate_l2_per_second": 20.51346133177587,
+    "inference_ms_mean": 0.6369547499856845,
+    "inference_ms_p95": 1.1436489994139263,
+    "reference_pipeline_ms_mean": 0.5862203632050468,
+    "roll_rmse": 1.9019971390033337,
+    "pitch_rmse": 0.9565395454680816,
+    "yaw_rmse": 1.8526016366744602,
+    "branch_cosine_mean": 0.2136195637943895,
+    "branch_cancellation_ratio": 0.13750091959089417
+  }
+}

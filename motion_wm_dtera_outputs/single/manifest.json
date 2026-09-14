@@ -1,0 +1,72 @@
+{
+  "motions": [
+    "accad/B3___walk1.pkl"
+  ],
+  "seeds": [
+    42
+  ],
+  "modes": [
+    [
+      "A",
+      "corrupt",
+      "twist"
+    ],
+    [
+      "B",
+      "wm",
+      "twist"
+    ],
+    [
+      "C",
+      "corrupt",
+      "demand_only"
+    ],
+    [
+      "D",
+      "wm",
+      "demand_only"
+    ],
+    [
+      "E",
+      "clean",
+      "demand_only"
+    ],
+    [
+      "D_gate_off",
+      "wm",
+      "off"
+    ],
+    [
+      "D_demand_confidence",
+      "wm",
+      "demand_confidence"
+    ],
+    [
+      "D_full",
+      "wm",
+      "full"
+    ],
+    [
+      "D_dyn_only",
+      "wm",
+      "dyn_only"
+    ],
+    [
+      "D_err_only",
+      "wm",
+      "err_only"
+    ]
+  ],
+  "preset": "formal",
+  "motion_speed": 1,
+  "motion_scale": 1,
+  "hip_yaw_scale": 1,
+  "warmup_frames": 24,
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/g1_twist_dtera_revision4/dtera_revision4_frozen_output_bias_overnight/model_4800.pt",
+  "checkpoint_sha256": "caf4c74e0ec3e86b411c9ac954c9c0e8bb919369fcd5fd9dbbb232037f4ec1cd",
+  "twist_sha256": "f7d34dd2bc0b278cd4da33811dc8218e65da306a83d5c62f6fd12c1dc8202ef0",
+  "wm_sha256": "187c11b128cbf1a6c095edcf1e3e8291fef76b63c03639f1d5618285f83afd99",
+  "unseen_scope": "Motion-WM test split only; DTERA training overlap must be audited",
+  "fall_definition": "episode has height < 0.35 m or vertical-axis tilt > 1.0 rad",
+  "full_definition": "D retains training demand_only; D_full activates confidence and risk"
+}

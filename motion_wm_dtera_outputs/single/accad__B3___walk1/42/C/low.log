@@ -1,0 +1,84 @@
+[DTERA] Detected 3695-D dual-history policy; enabling dynamics and 
+tracking-error runtime histories automatically.
+[AnyAdapter] Runtime loaded, policy: 
+/home/hank/TWIST（anyadapter）/motion_wm_dtera_outputs/single/policies/demand_on
+ly.pt
+Degrees of Freedom (DoF) names and their order:
+DoF 0: pelvis
+DoF 1: pelvis
+DoF 2: pelvis
+DoF 3: pelvis
+DoF 4: pelvis
+DoF 5: pelvis
+DoF 6: left_hip_pitch_joint
+DoF 7: left_hip_roll_joint
+DoF 8: left_hip_yaw_joint
+DoF 9: left_knee_joint
+DoF 10: left_ankle_pitch_joint
+DoF 11: left_ankle_roll_joint
+DoF 12: right_hip_pitch_joint
+DoF 13: right_hip_roll_joint
+DoF 14: right_hip_yaw_joint
+DoF 15: right_knee_joint
+DoF 16: right_ankle_pitch_joint
+DoF 17: right_ankle_roll_joint
+DoF 18: waist_yaw_joint
+DoF 19: waist_roll_joint
+DoF 20: waist_pitch_joint
+DoF 21: left_shoulder_pitch_joint
+DoF 22: left_shoulder_roll_joint
+DoF 23: left_shoulder_yaw_joint
+DoF 24: left_elbow_joint
+DoF 25: left_wrist_roll_joint
+DoF 26: right_shoulder_pitch_joint
+DoF 27: right_shoulder_roll_joint
+DoF 28: right_shoulder_yaw_joint
+DoF 29: right_elbow_joint
+DoF 30: right_wrist_roll_joint
+Motor (Actuator) names and their IDs:
+Motor ID 0: left_hip_pitch_joint
+Motor ID 1: left_hip_roll_joint
+Motor ID 2: left_hip_yaw_joint
+Motor ID 3: left_knee_joint
+Motor ID 4: left_ankle_pitch_joint
+Motor ID 5: left_ankle_roll_joint
+Motor ID 6: right_hip_pitch_joint
+Motor ID 7: right_hip_roll_joint
+Motor ID 8: right_hip_yaw_joint
+Motor ID 9: right_knee_joint
+Motor ID 10: right_ankle_pitch_joint
+Motor ID 11: right_ankle_roll_joint
+Motor ID 12: waist_yaw_joint
+Motor ID 13: waist_roll_joint
+Motor ID 14: waist_pitch_joint
+Motor ID 15: left_shoulder_pitch_joint
+Motor ID 16: left_shoulder_roll_joint
+Motor ID 17: left_shoulder_yaw_joint
+Motor ID 18: left_elbow_joint
+Motor ID 19: left_wrist_roll_joint
+Motor ID 20: right_shoulder_pitch_joint
+Motor ID 21: right_shoulder_roll_joint
+Motor ID 22: right_shoulder_yaw_joint
+Motor ID 23: right_elbow_joint
+Motor ID 24: right_wrist_roll_joint
+Saving video to 
+/home/hank/TWIST（anyadapter）/motion_wm_dtera_outputs/single/accad__B3___walk1/
+42/C/demo.mp4
+Simulating...:   0%|          | 0/7600 [00:00<?, ?it/s]Simulating...:   1%|▏         | 99/7600 [00:00<00:07, 987.03it/s]Simulating...:   3%|▎         | 200/7600 [00:00<00:07, 994.68it/s]Simulating...:   4%|▍         | 301/7600 [00:00<00:07, 944.85it/s]Simulating...:   5%|▌         | 401/7600 [00:00<00:07, 961.76it/s]Simulating...:   7%|▋         | 513/7600 [00:00<00:06, 1017.27it/s]Simulating...:   8%|▊         | 616/7600 [00:00<00:06, 1015.86it/s]Simulating...:   9%|▉         | 718/7600 [00:00<00:06, 1010.68it/s]Simulating...:  11%|█         | 820/7600 [00:00<00:06, 1007.30it/s]Simulating...:  12%|█▏        | 921/7600 [00:00<00:06, 960.53it/s] Simulating...:  14%|█▎        | 1037/7600 [00:01<00:06, 1016.73it/s]Simulating...:  15%|█▌        | 1140/7600 [00:01<00:06, 1011.67it/s]Simulating...:  16%|█▋        | 1242/7600 [00:01<00:06, 969.16it/s] Simulating...:  18%|█▊        | 1344/7600 [00:01<00:06, 983.74it/s]Simulating...:  19%|█▉        | 1443/7600 [00:01<00:06, 981.60it/s]Simulating...:  20%|██        | 1542/7600 [00:01<00:06, 982.78it/s]Simulating...:  22%|██▏       | 1645/7600 [00:01<00:05, 996.66it/s]Simulating...:  23%|██▎       | 1745/7600 [00:01<00:05, 992.81it/s]Simulating...:  24%|██▍       | 1845/7600 [00:01<00:05, 994.80it/s]Simulating...:  26%|██▌       | 1945/7600 [00:01<00:05, 996.33it/s]Simulating...:  27%|██▋       | 2045/7600 [00:02<00:05, 996.95it/s]Simulating...:  28%|██▊       | 2145/7600 [00:02<00:05, 996.09it/s]Simulating...:  30%|██▉       | 2245/7600 [00:02<00:05, 995.79it/s]Simulating...:  31%|███       | 2345/7600 [00:02<00:05, 994.42it/s]Simulating...:  32%|███▏      | 2445/7600 [00:02<00:05, 993.68it/s]Simulating...:  33%|███▎      | 2545/7600 [00:02<00:05, 991.36it/s]Simulating...:  35%|███▍      | 2645/7600 [00:02<00:04, 993.89it/s]Simulating...:  36%|███▋      | 2758/7600 [00:02<00:04, 1034.51it/s]Simulating...:  38%|███▊      | 2862/7600 [00:02<00:04, 983.82it/s] Simulating...:  39%|███▉      | 2961/7600 [00:02<00:04, 980.08it/s]Simulating...:  41%|████      | 3081/7600 [00:03<00:04, 990.27it/s]Simulating...:  42%|████▏     | 3181/7600 [00:03<00:04, 990.67it/s]Simulating...:  43%|████▎     | 3287/7600 [00:03<00:04, 1010.49it/s]Simulating...:  45%|████▍     | 3389/7600 [00:03<00:04, 1011.90it/s]Simulating...:  46%|████▌     | 3491/7600 [00:03<00:04, 1011.53it/s]Simulating...:  47%|████▋     | 3593/7600 [00:03<00:03, 1013.17it/s]Simulating...:  49%|████▊     | 3695/7600 [00:03<00:03, 1007.60it/s]Simulating...:  50%|█████     | 3801/7600 [00:03<00:03, 969.63it/s] Simulating...:  51%|█████▏    | 3911/7600 [00:03<00:03, 1006.85it/s]Simulating...:  53%|█████▎    | 4013/7600 [00:04<00:03, 1008.68it/s]Simulating...:  54%|█████▍    | 4118/7600 [00:04<00:03, 1020.67it/s]Simulating...:  56%|█████▌    | 4221/7600 [00:04<00:03, 964.58it/s] Simulating...:  57%|█████▋    | 4321/7600 [00:04<00:03, 974.18it/s]Simulating...:  58%|█████▊    | 4424/7600 [00:04<00:03, 990.27it/s]Simulating...:  60%|█████▉    | 4524/7600 [00:04<00:03, 992.31it/s]Simulating...:  61%|██████    | 4624/7600 [00:04<00:03, 991.82it/s]Simulating...:  62%|██████▏   | 4724/7600 [00:04<00:02, 992.72it/s]Simulating...:  63%|██████▎   | 4824/7600 [00:04<00:02, 992.48it/s]Simulating...:  65%|██████▍   | 4929/7600 [00:04<00:02, 1009.55it/s]Simulating...:  66%|██████▌   | 5031/7600 [00:05<00:02, 1003.57it/s]Simulating...:  68%|██████▊   | 5132/7600 [00:05<00:02, 1001.47it/s]Simulating...:  69%|██████▉   | 5241/7600 [00:05<00:02, 978.87it/s] Simulating...:  70%|███████   | 5341/7600 [00:05<00:02, 984.55it/s]Simulating...:  72%|███████▏  | 5441/7600 [00:05<00:02, 985.56it/s]Simulating...:  73%|███████▎  | 5541/7600 [00:05<00:02, 989.52it/s]Simulating...:  74%|███████▍  | 5641/7600 [00:05<00:01, 990.21it/s]Simulating...:  76%|███████▌  | 5741/7600 [00:05<00:01, 992.98it/s]Simulating...:  77%|███████▋  | 5841/7600 [00:05<00:01, 993.71it/s]Simulating...:  78%|███████▊  | 5941/7600 [00:05<00:01, 995.10it/s]Simulating...:  79%|███████▉  | 6041/7600 [00:06<00:01, 995.95it/s]Simulating...:  81%|████████  | 6141/7600 [00:06<00:01, 996.84it/s]Simulating...:  82%|████████▏ | 6241/7600 [00:06<00:01, 997.05it/s]Simulating...:  83%|████████▎ | 6341/7600 [00:06<00:01, 995.51it/s]Simulating...:  85%|████████▍ | 6441/7600 [00:06<00:01, 996.16it/s]Simulating...:  86%|████████▌ | 6552/7600 [00:06<00:01, 1030.12it/s]Simulating...:  88%|████████▊ | 6656/7600 [00:06<00:00, 1028.01it/s]Simulating...:  89%|████████▉ | 6759/7600 [00:06<00:00, 1027.40it/s]Simulating...:  90%|█████████ | 6862/7600 [00:06<00:00, 966.77it/s] Simulating...:  92%|█████████▏| 6971/7600 [00:07<00:00, 1002.05it/s]Simulating...:  93%|█████████▎| 7081/7600 [00:07<00:00, 978.11it/s] Simulating...:  94%|█████████▍| 7181/7600 [00:07<00:00, 981.95it/s]Simulating...:  96%|█████████▌| 7281/7600 [00:07<00:00, 986.72it/s]Simulating...:  97%|█████████▋| 7382/7600 [00:07<00:00, 993.46it/s]Simulating...:  98%|█████████▊| 7482/7600 [00:07<00:00, 993.23it/s]Simulating...: 100%|█████████▉| 7582/7600 [00:07<00:00, 993.99it/s]Simulating...: 100%|██████████| 7600/7600 [00:07<00:00, 997.11it/s]
+Rendering 380 cached video frames...
+Video saved to 
+/home/hank/TWIST（anyadapter）/motion_wm_dtera_outputs/single/accad__B3___walk1/
+42/C/demo.mp4
+Metrics saved to 
+/home/hank/TWIST（anyadapter）/motion_wm_dtera_outputs/single/accad__B3___walk1/
+2/C/legacy_summary.json
+Metrics summary: {'frames': 380, 'joint_rmse': 0.15530491547489747, 'joint_mae':
+0.114678105168784, 'max_joint_error': 0.8402330875396729, 'root_error': 
+0.31260110725827683, 'root_velocity_rmse': 0.18940694365082683, 
+'minimum_pelvis_height': 0.7465212425076923, 'maximum_abs_roll': 
+0.12346766362637794, 'maximum_abs_pitch': 0.2782896971090024, 'max_tilt': 
+0.2782896971090024, 'root_height_error': 0.027271539139465686, 
+'root_height_mae': 0.023713044091278584, 'roll_error': 0.04192442065133711, 
+'roll_mae': 0.03128717805980212, 'pitch_error': 0.09921184484166391, 
+'pitch_mae': 0.0888765835460636, 'yaw_error': 0.6152507009224213, 'yaw_mae': 
+0.5609174162234395}
