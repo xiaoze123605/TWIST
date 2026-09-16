@@ -289,6 +289,7 @@ def verify_traced(
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--preset', choices=['legacy', 'motion_wm_v2'], default='legacy')
     parser.add_argument("--ckpt", required=True, help="Path to the DTERA checkpoint .pt")
     parser.add_argument("--out", default=None, help="Output JIT actor path. Defaults to <run_dir>/traced/<run>-<ckpt>-dtera-<gate_mode>-jit.pt")
     parser.add_argument("--base_actor_jit_path", default=DEFAULT_BASE_ACTOR_JIT_PATH)
@@ -315,10 +316,17 @@ def main():
     parser.add_argument("--tracking_branch_gain", type=float, default=TRACKING_BRANCH_GAIN)
     parser.add_argument("--num_verify_samples", type=int, default=8)
     parser.add_argument("--branch_mode", choices=["full", "dyn_only", "err_only"], default="full")
+    preset_args, _ = parser.parse_known_args()
+    if preset_args.preset == 'motion_wm_v2':
+        parser.set_defaults(independent_branch_gates=True,
+                            tracking_demand_mode='smoothstep',
+                            dynamics_branch_gain=0.5, tracking_branch_gain=0.25)
     args = parser.parse_args()
 
     if args.out is None:
         args.out = default_output_path(args.ckpt, args.gate_mode, args.adapter_gain)
+        if args.preset != 'legacy':
+            args.out = args.out.replace('-jit.pt', '-' + args.preset + '-jit.pt')
 
     model = build_actor(args)
 

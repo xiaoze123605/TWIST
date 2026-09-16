@@ -72,7 +72,9 @@ class MotionLib:
                     root_pos = torch.tensor(motion_data["root_pos"], dtype=torch.float, device=self._device)
                     root_rot = torch.tensor(motion_data["root_rot"], dtype=torch.float, device=self._device)
                     dof_pos = torch.tensor(motion_data["dof_pos"], dtype=torch.float, device=self._device)
-                    local_body_pos = torch.tensor(motion_data["local_body_pos"], dtype=torch.float, device=self._device)
+                    # Stage the largest motion field on CPU so the final cat
+                    # does not require a second full copy in GPU memory.
+                    local_body_pos = torch.tensor(motion_data["local_body_pos"], dtype=torch.float)
                     if i == 0:
                         self._body_link_list = motion_data["link_body_list"]
                     
@@ -133,7 +135,7 @@ class MotionLib:
         self._motion_root_ang_vel = torch.cat(self._motion_root_ang_vel, dim=0)
         self._motion_dof_pos = torch.cat(self._motion_dof_pos, dim=0)
         self._motion_dof_vel = torch.cat(self._motion_dof_vel, dim=0)
-        self._motion_local_body_pos = torch.cat(self._motion_local_body_pos, dim=0)
+        self._motion_local_body_pos = torch.cat(self._motion_local_body_pos, dim=0).to(self._device)
         
         lengths_shifted = self._motion_num_frames.roll(1)
         lengths_shifted[0] = 0
@@ -248,4 +250,3 @@ class MotionLib:
     
     def get_motion_names(self):
         return self._motion_names
-        

@@ -201,13 +201,22 @@ class MotionDemoMetrics:
 
 
 def _detect_policy_obs_dim(policy_path, device):
-    """Load TorchScript once and probe all supported observation contracts."""
+    """Probe the observation contract on CPU without poisoning CUDA state.
+
+    Some TorchScript policies can turn an intentionally wrong-shape CUDA
+    probe into a device-side assertion.  CUDA then reports the same failure
+    for every later probe in that process, including the policy's correct
+    observation dimension.  The observation contract is device-independent,
+    so keep contract discovery on CPU; the selected runtime device is still
+    used when the controller loads the policy for actual inference.
+    """
     cache_key = (os.path.abspath(policy_path), str(device))
     if cache_key in _POLICY_OBS_DIM_CACHE:
         return _POLICY_OBS_DIM_CACHE[cache_key]
+    probe_device = torch.device("cpu")
     try:
-        policy = torch.jit.load(policy_path, map_location=device)
-        policy = policy.to(device)
+        policy = torch.jit.load(policy_path, map_location=probe_device)
+        policy = policy.to(probe_device)
         policy.eval()
     except Exception as exc:
         detail = str(exc).splitlines()[-1]
@@ -218,7 +227,7 @@ def _detect_policy_obs_dim(policy_path, device):
     with torch.no_grad():
         for obs_dim in SUPPORTED_POLICY_OBS_DIMS:
             try:
-                out = policy(torch.zeros(1, obs_dim, device=device))
+                out = policy(torch.zeros(1, obs_dim, device=probe_device))
                 if out.shape[-1] == NUM_ACTIONS:
                     _POLICY_PROBE_ERRORS.pop((str(device), obs_dim), None)
                     _POLICY_OBS_DIM_CACHE[cache_key] = obs_dim
@@ -801,6 +810,11 @@ class RealTimePolicyController:
 
 
 def main_low_level_sim(args):
+    if args.plot_dir:
+        os.makedirs(args.plot_dir, exist_ok=False)
+        args.sync_reference = True
+        args.trace_out = os.path.join(args.plot_dir, 'frames.jsonl')
+        args.metrics_out = os.path.join(args.plot_dir, 'summary.json')
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     controller = RealTimePolicyController(
@@ -821,7 +835,16 @@ def main_low_level_sim(args):
         require_dtera=args.require_dtera,
         redis_port=args.redis_port,
     )
-    controller.run()
+    try:
+        controller.run()
+    finally:
+        if args.plot_dir and os.path.isfile(args.trace_out):
+            import subprocess
+            import sys
+            plotter = os.path.join(os.path.dirname(__file__), '..', 'tools', 'plot_sim_trace.py')
+            result = subprocess.run([sys.executable, plotter, '--trace', args.trace_out, '--out', args.plot_dir])
+            if result.returncode:
+                print('Curve export failed; raw trace is preserved:', args.trace_out)
 
 
 if __name__ == "__main__":
@@ -845,6 +868,8 @@ if __name__ == "__main__":
                         
     parser.add_argument("--record_video", action="store_true", help="Record a video")
     parser.add_argument("--trace_out", default=None)
+    parser.add_argument('--plot-dir', default=None,
+                        help='New directory for synchronized trace, CSV and diagnostic PNG curves; requires high-level motion server.')
     parser.add_argument("--require-dtera", action="store_true")
     parser.add_argument("--sync-reference", action="store_true", help="Request each motion frame exactly once for paired comparisons.")
     parser.add_argument(

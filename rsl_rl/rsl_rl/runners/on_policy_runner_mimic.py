@@ -560,6 +560,8 @@ class OnPolicyRunnerMimic:
             # wandb_dict['Train/mean_reward/time', statistics.mean(locs['rewbuffer']), self.tot_time)
             # wandb_dict['Train/mean_episode_length/time', statistics.mean(locs['lenbuffer']), self.tot_time)
 
+        if hasattr(self.env, 'pop_training_metrics'):
+            wandb_dict.update(self.env.pop_training_metrics())
         wandb.log(wandb_dict, step=locs['it'])
         if self.log_dir is not None:
             json_record = {

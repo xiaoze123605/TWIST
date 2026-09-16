@@ -22,8 +22,8 @@ def snapshot(module):
 
 def main():
     args = get_args()
-    if args.task != 'g1_motion_wm_dtera' or not args.resumeid:
-        raise ValueError('Specify --task g1_motion_wm_dtera and --resumeid for a verified DTERA checkpoint')
+    if args.task not in ('g1_motion_wm_dtera', 'g1_motion_wm_dtera_v2', 'g1_motion_wm_dtera_legs'):
+        raise ValueError('Specify a Motion-WM DTERA training task')
     if args.num_envs is None or args.num_envs > 8 or args.max_iterations not in (2,3):
         raise ValueError('Smoke proof requires <=8 environments and 2 or 3 iterations')
     args.headless = True
