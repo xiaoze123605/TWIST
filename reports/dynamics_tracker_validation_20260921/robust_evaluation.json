@@ -1,0 +1,16 @@
+{
+  "task": "g1_dynamics_tracker_robust",
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/causal_smoke_20260921/robust/model_3.pt",
+  "motion_file": "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "seed": 42,
+  "frames": 400,
+  "noise": false,
+  "resets": 8,
+  "physical_failures": 8,
+  "motion_completions": 0,
+  "timeouts": 0,
+  "joint_rmse_rad": 0.15996127810361957,
+  "root_height_rmse_m": 0.06518473718405468,
+  "torque_saturation_fraction": 0.0,
+  "scripted_action_parity": true
+}

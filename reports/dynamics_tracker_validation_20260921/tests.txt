@@ -1,0 +1,55 @@
+.....................                                                    [100%]
+=============================== warnings summary ===============================
+tests/test_dynamics_tracker.py::test_targets_and_export_runtime_roundtrip[reference]
+tests/test_dynamics_tracker.py::test_targets_and_export_runtime_roundtrip[direct]
+  /home/hank/TWIST（anyadapter）/tools/export_dynamics_tracker.py:18: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+
+tests/test_dynamics_tracker.py::test_stage_switch_preserves_action_and_resume_rejects_contract
+  /home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/runners/dynamics_tracker_runner.py:79: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    checkpoint = torch.load(path, map_location=self.device)
+
+tests/test_dynamics_tracker_sim.py: 400 warnings
+  /home/hank/IsaacGym_Preview_4_Package/isaacgym/python/isaacgym/terrain_utils.py:44: DeprecationWarning: `interp2d` is deprecated!
+  `interp2d` is deprecated in SciPy 1.10 and will be removed in SciPy 1.12.0.
+
+  For legacy code, nearly bug-for-bug compatible replacements are
+  `RectBivariateSpline` on regular grids, and `bisplrep`/`bisplev` for
+  scattered 2D data.
+
+  In new code, for regular grids use `RegularGridInterpolator` instead.
+  For scattered data, prefer `LinearNDInterpolator` or
+  `CloughTocher2DInterpolator`.
+
+  For more details see
+  `https://gist.github.com/ev-br/8544371b40f414b7eaf3fe6217209bff`
+
+    f = interpolate.interp2d(y, x, height_field_downsampled, kind='linear')
+
+tests/test_dynamics_tracker_sim.py: 400 warnings
+  /home/hank/IsaacGym_Preview_4_Package/isaacgym/python/isaacgym/terrain_utils.py:48: DeprecationWarning:         `interp2d` is deprecated!
+          `interp2d` is deprecated in SciPy 1.10 and will be removed in SciPy 1.12.0.
+
+          For legacy code, nearly bug-for-bug compatible replacements are
+          `RectBivariateSpline` on regular grids, and `bisplrep`/`bisplev` for
+          scattered 2D data.
+
+          In new code, for regular grids use `RegularGridInterpolator` instead.
+          For scattered data, prefer `LinearNDInterpolator` or
+          `CloughTocher2DInterpolator`.
+
+          For more details see
+          `https://gist.github.com/ev-br/8544371b40f414b7eaf3fe6217209bff`
+
+    z_upsampled = np.rint(f(y_upsampled, x_upsampled))
+
+tests/test_twist_anyadapter_opentrack.py::test_jit_parity_and_input_contract
+  /home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_anyadapter_opentrack.py:48: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+    if obs.shape[-1] != self.EXPECTED_POLICY_OBS_DIM:
+
+tests/test_twist_anyadapter_opentrack.py::test_jit_parity_and_input_contract
+  /home/hank/TWIST（anyadapter）/rsl_rl/rsl_rl/modules/actor_critic_twist_any2track.py:321: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+    if obs.shape[1] < history_end:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+21 passed, 805 warnings in 14.03s

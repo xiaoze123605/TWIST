@@ -1,0 +1,16 @@
+{
+  "baseline": "4806b2b",
+  "all_identical": true,
+  "sha256": {
+    "legged_gym/legged_gym/envs/g1/g1_mimic_distill.py": "dfa628193000a3974c2baef8b411e5c4a1eb9cbd739595408977cf4882c354fb",
+    "legged_gym/legged_gym/envs/g1/g1_mimic_distill_config.py": "7a03113adfa1949f500381482f06b261d07484dbe550964cb882fda1fe928228",
+    "legged_gym/legged_gym/envs/base/humanoid_char.py": "eb80041f41820fb541da81c067960cdbb26e5f7d725339371965e5222246f4b0",
+    "legged_gym/legged_gym/envs/base/humanoid_mimic.py": "a28959783512c1b024d3b994a1553545ebc1d27de0829a2103a98892e2c9f3a7",
+    "rsl_rl/rsl_rl/algorithms/ppo.py": "ad309f4da0f6edf8d27ec4431136bc5073b674da902343c0cc7dfe09730b1ae2",
+    "rsl_rl/rsl_rl/algorithms/ppo_anyadapter_opentrack.py": "3e30d798f1465750e4e2b8eb67ac76e77c3d605ebcfd11161cbcee627e50224b",
+    "rsl_rl/rsl_rl/modules/actor_critic_twist_anyadapter_opentrack.py": "3dfce515b0cd72834c09e5f37935a42a309a3a7874f6eeea017115b366904f21",
+    "deploy_real/server_low_level_g1_real_anyadapter.py": "9366eca29e9cccf8b47c0855f20518f738c47257005b2adc79074527843c5838",
+    "deploy_real/server_low_level_g1_real.py": "46e70a683f3e88cd2fa8a73f4b147e860a796190505eea578b52534f3d4c884b",
+    "deploy_real/server_low_level_g1_sim.py": "c82ec5990ef0cfed294c6b96b1510833b200756112ae58e9f8fb69cd16e7c762"
+  }
+}

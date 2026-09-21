@@ -91,3 +91,14 @@ task_registry.register("g1_motion_wm_dtera_deploy_v4", G1MotionWMDTERADeployV4, 
 task_registry.register("g1_stu_anyadapter_dtera_selective", G1MimicDistill, G1MimicStuAnyAdapterDTERASelectiveCfg(), G1MimicStuAnyAdapterDTERASelectiveCfgPPO())
 task_registry.register("g1_stu_anyadapter_v5", G1MimicDistill, G1MimicStuAnyAdapterV5Cfg(), G1MimicStuAnyAdapterV5CfgPPO())
 task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdapterV6Cfg(), G1MimicStuAnyAdapterV6CfgPPO())
+
+from .g1.g1_dynamics_tracker import G1DynamicsTracker
+from .g1.g1_dynamics_tracker_config import (
+    G1DynamicsTrackerCfg, G1DynamicsTrackerRobustCfg,
+    G1DynamicsTrackerDirectCfg, G1DynamicsTrackerDirectRobustCfg,
+    G1DynamicsTrackerCfgPPO, G1DynamicsTrackerRobustCfgPPO,
+)
+task_registry.register("g1_dynamics_tracker", G1DynamicsTracker, G1DynamicsTrackerCfg(), G1DynamicsTrackerCfgPPO())
+task_registry.register("g1_dynamics_tracker_robust", G1DynamicsTracker, G1DynamicsTrackerRobustCfg(), G1DynamicsTrackerRobustCfgPPO())
+task_registry.register("g1_dynamics_tracker_direct", G1DynamicsTracker, G1DynamicsTrackerDirectCfg(), G1DynamicsTrackerCfgPPO())
+task_registry.register("g1_dynamics_tracker_direct_robust", G1DynamicsTracker, G1DynamicsTrackerDirectRobustCfg(), G1DynamicsTrackerRobustCfgPPO())

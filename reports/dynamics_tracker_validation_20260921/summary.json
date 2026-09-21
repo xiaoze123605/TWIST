@@ -1,0 +1,66 @@
+{
+  "date": "2026-09-21",
+  "baseline": "4806b2b",
+  "tests_passed": 21,
+  "includes_real_gpu_contract_test": true,
+  "includes_legacy_regression_tests": true,
+  "reference_time_offset_steps": 0,
+  "motion_file": "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "runs": {
+    "nominal": {
+      "updates": 3,
+      "environments": 4,
+      "steps_per_environment_per_update": 24,
+      "total_environment_transitions": 288,
+      "final_metrics": {
+        "value_loss": 0.03812216580263339,
+        "policy_loss": -0.02905926527455449,
+        "world_model_loss": 0.7024531960487366,
+        "world_model_valid_steps": 68.0,
+        "world_model_horizon": 20,
+        "mean_action_std": 0.2996264100074768,
+        "iteration": 3,
+        "mean_reward": 0.028711322772627074,
+        "terminations": 3
+      },
+      "checkpoint": "legged_gym/logs/dynamics_tracker/causal_smoke_20260921/nominal/model_3.pt"
+    },
+    "robust": {
+      "updates": 3,
+      "environments": 4,
+      "steps_per_environment_per_update": 24,
+      "total_environment_transitions": 288,
+      "final_metrics": {
+        "value_loss": 0.03551543201319873,
+        "policy_loss": -0.01785867547732778,
+        "world_model_loss": 0.7510007619857788,
+        "world_model_valid_steps": 65.0,
+        "world_model_horizon": 20,
+        "mean_action_std": 0.2995682954788208,
+        "iteration": 3,
+        "mean_reward": 0.029139328515157104,
+        "terminations": 3
+      },
+      "checkpoint": "legged_gym/logs/dynamics_tracker/causal_smoke_20260921/robust/model_3.pt"
+    },
+    "direct": {
+      "updates": 3,
+      "environments": 4,
+      "steps_per_environment_per_update": 24,
+      "total_environment_transitions": 288,
+      "final_metrics": {
+        "value_loss": 0.013424558914266527,
+        "policy_loss": -0.03492385311983526,
+        "world_model_loss": 2.1339025497436523,
+        "world_model_valid_steps": 11.0,
+        "world_model_horizon": 20,
+        "mean_action_std": 0.29955431818962097,
+        "iteration": 3,
+        "mean_reward": -0.0090656026538151,
+        "terminations": 5
+      },
+      "checkpoint": "legged_gym/logs/dynamics_tracker/causal_smoke_20260921/direct/model_3.pt"
+    }
+  },
+  "conclusion": "Implementation smoke tests only; no evidence of superiority over TWIST."
+}
