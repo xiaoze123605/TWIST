@@ -24,7 +24,13 @@ evaluate_dual_branch.py's DTERA gate-mode presets).
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT), str(ROOT/'rsl_rl')]
 
 import torch
 
@@ -93,6 +99,15 @@ DYNAMICS_GATE_SCALE = 1.0
 TRACKING_GATE_SCALE = 1.0
 DYNAMICS_CONFIDENCE_GATE_STRENGTH = 0.0
 RESIDUAL_WARMUP_ITERATIONS = 1000
+USE_PREDICTED_IMPROVEMENT_GATE = False
+PREDICTED_IMPROVEMENT_MODE = "threshold"
+PREDICTED_IMPROVEMENT_LOW = 0.0
+PREDICTED_IMPROVEMENT_HIGH = 0.02
+FEEDBACK_RESIDUAL_SCALES = (0.0, 0.25, 0.5, 0.75, 1.0)
+FEEDBACK_TEMPERATURE = 0.01
+PREDICTED_IMPROVEMENT_GATE_START_ITERATION = 0
+PREDICTED_IMPROVEMENT_GATE_RAMP_ITERATIONS = 0
+RESIDUAL_JOINT_SCALES = (1.0,) * NUM_ACTIONS
 FREEZE_RESIDUAL_OUTPUT_BIAS = True
 WM_VARIANCE_EMA_DECAY = 0.99
 # The base actor is a frozen JIT and the critic is training-only; both are
@@ -169,7 +184,16 @@ def build_actor(args: argparse.Namespace) -> TwistDTERAActorCritic:
         dynamics_gate_scale=args.dynamics_gate_scale,
         tracking_gate_scale=args.tracking_gate_scale,
         dynamics_confidence_gate_strength=args.dynamics_confidence_gate_strength,
-        residual_warmup_iterations=RESIDUAL_WARMUP_ITERATIONS,
+        use_predicted_improvement_gate=args.predicted_improvement_gate,
+        predicted_improvement_mode=args.predicted_improvement_mode,
+        predicted_improvement_low=args.predicted_improvement_low,
+        predicted_improvement_high=args.predicted_improvement_high,
+        feedback_residual_scales=args.feedback_residual_scales,
+        feedback_temperature=args.feedback_temperature,
+        predicted_improvement_gate_start_iteration=args.predicted_improvement_gate_start_iteration,
+        predicted_improvement_gate_ramp_iterations=args.predicted_improvement_gate_ramp_iterations,
+        residual_joint_scales=args.residual_joint_scales,
+        residual_warmup_iterations=args.residual_warmup_iterations,
         freeze_residual_output_bias=FREEZE_RESIDUAL_OUTPUT_BIAS,
         wm_variance_ema_decay=WM_VARIANCE_EMA_DECAY,
         base_single_obs_dim=BASE_SINGLE_OBS_DIM,
@@ -287,9 +311,73 @@ def verify_traced(
           f"residual warmup factor = {factor:.4f} (warmup iters = {ac.residual_warmup_iterations})")
 
 
+def check_saved_policy_config(checkpoint, model, explicit_options):
+    """Catch non-tensor gate/gain mismatches that strict state loading misses."""
+    policy = checkpoint.get('training_config', {}).get('policy')
+    if policy is None:
+        print('[config] Legacy checkpoint has no saved policy configuration; verify the selected preset manually')
+        return []
+    options = {
+        'use_independent_branch_gates': '--independent_branch_gates',
+        'tracking_demand_mode': '--tracking_demand_mode',
+        'tracking_demand_low': '--tracking_demand_low',
+        'tracking_demand_high': '--tracking_demand_high',
+        'dynamics_demand_low': '--dynamics_demand_low',
+        'dynamics_demand_high': '--dynamics_demand_high',
+        'dynamics_gate_scale': '--dynamics_gate_scale',
+        'tracking_gate_scale': '--tracking_gate_scale',
+        'dynamics_branch_gain': '--dynamics_branch_gain',
+        'tracking_branch_gain': '--tracking_branch_gain',
+        'adapter_gain': '--adapter_gain',
+        'dynamics_action_delta_scale': '--dynamics_delta_scale',
+        'tracking_action_delta_scale': '--tracking_delta_scale',
+        'gate_mode': '--gate_mode',
+        'confidence_gate_strength': '--confidence_gate_strength',
+        'dynamics_confidence_gate_strength': '--dynamics_confidence_gate_strength',
+        'use_predicted_improvement_gate': '--predicted_improvement_gate',
+        'predicted_improvement_mode': '--predicted_improvement_mode',
+        'predicted_improvement_low': '--predicted_improvement_low',
+        'predicted_improvement_high': '--predicted_improvement_high',
+        'feedback_residual_scales': '--feedback_residual_scales',
+        'feedback_temperature': '--feedback_temperature',
+        'predicted_improvement_gate_start_iteration': '--predicted_improvement_gate_start_iteration',
+        'predicted_improvement_gate_ramp_iterations': '--predicted_improvement_gate_ramp_iterations',
+        'residual_joint_scales': '--residual_joint_scales',
+        'residual_warmup_iterations': '--residual_warmup_iterations',
+    }
+    overrides = []
+    for key, option in options.items():
+        if key not in policy:
+            continue
+        trained = policy[key]
+        if key == 'dynamics_action_delta_scale':
+            exported = model.adapter.dynamics_branch.delta_scale
+        elif key == 'tracking_action_delta_scale':
+            exported = model.adapter.tracking_branch.delta_scale
+        elif key in ('residual_joint_scales', 'feedback_residual_scales'):
+            buffer = (
+                model.residual_joint_scale
+                if key == 'residual_joint_scales'
+                else model.feedback_residual_scale_candidates
+            )
+            exported = tuple(float(x) for x in buffer.tolist())
+            trained = tuple(float(x) for x in trained)
+        else:
+            exported = getattr(model, key)
+        if trained == exported:
+            continue
+        if option not in explicit_options:
+            raise ValueError(f'Export/training mismatch for {key}: trained={trained}, export={exported}. '
+                             'Select the matching --preset; pass an explicit override only for an intended ablation.')
+        overrides.append(dict(parameter=key, trained=trained, exported=exported))
+    return overrides
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--preset', choices=['legacy', 'motion_wm_v2'], default='legacy')
+    parser.add_argument('--preset', choices=['legacy', 'motion_wm_v2', 'motion_wm_deploy_v3',
+                                             'motion_wm_deploy_v4'],
+                        default='legacy')
     parser.add_argument("--ckpt", required=True, help="Path to the DTERA checkpoint .pt")
     parser.add_argument("--out", default=None, help="Output JIT actor path. Defaults to <run_dir>/traced/<run>-<ckpt>-dtera-<gate_mode>-jit.pt")
     parser.add_argument("--base_actor_jit_path", default=DEFAULT_BASE_ACTOR_JIT_PATH)
@@ -314,6 +402,27 @@ def main():
     parser.add_argument("--tracking_delta_scale", type=float, default=TRACKING_ACTION_DELTA_SCALE)
     parser.add_argument("--dynamics_branch_gain", type=float, default=DYNAMICS_BRANCH_GAIN)
     parser.add_argument("--tracking_branch_gain", type=float, default=TRACKING_BRANCH_GAIN)
+    parser.add_argument("--residual_warmup_iterations", type=int,
+                        default=RESIDUAL_WARMUP_ITERATIONS)
+    parser.add_argument("--predicted_improvement_gate", action="store_true",
+                        default=USE_PREDICTED_IMPROVEMENT_GATE)
+    parser.add_argument("--predicted_improvement_mode",
+                        choices=["threshold", "feedback_line_search"],
+                        default=PREDICTED_IMPROVEMENT_MODE)
+    parser.add_argument("--predicted_improvement_low", type=float,
+                        default=PREDICTED_IMPROVEMENT_LOW)
+    parser.add_argument("--predicted_improvement_high", type=float,
+                        default=PREDICTED_IMPROVEMENT_HIGH)
+    parser.add_argument("--feedback_residual_scales", type=float, nargs=5,
+                        default=FEEDBACK_RESIDUAL_SCALES)
+    parser.add_argument("--feedback_temperature", type=float,
+                        default=FEEDBACK_TEMPERATURE)
+    parser.add_argument("--predicted_improvement_gate_start_iteration", type=int,
+                        default=PREDICTED_IMPROVEMENT_GATE_START_ITERATION)
+    parser.add_argument("--predicted_improvement_gate_ramp_iterations", type=int,
+                        default=PREDICTED_IMPROVEMENT_GATE_RAMP_ITERATIONS)
+    parser.add_argument("--residual_joint_scales", type=float, nargs=NUM_ACTIONS,
+                        default=RESIDUAL_JOINT_SCALES)
     parser.add_argument("--num_verify_samples", type=int, default=8)
     parser.add_argument("--branch_mode", choices=["full", "dyn_only", "err_only"], default="full")
     preset_args, _ = parser.parse_known_args()
@@ -321,6 +430,49 @@ def main():
         parser.set_defaults(independent_branch_gates=True,
                             tracking_demand_mode='smoothstep',
                             dynamics_branch_gain=0.5, tracking_branch_gain=0.25)
+    elif preset_args.preset == 'motion_wm_deploy_v3':
+        parser.set_defaults(
+            independent_branch_gates=True,
+            tracking_demand_mode='smoothstep',
+            dynamics_delta_scale=0.06,
+            tracking_delta_scale=0.06,
+            dynamics_branch_gain=1.0,
+            tracking_branch_gain=0.5,
+            tracking_demand_low=0.15,
+            tracking_demand_high=0.60,
+            dynamics_demand_low=0.05,
+            dynamics_demand_high=0.35,
+            residual_warmup_iterations=500,
+        )
+    elif preset_args.preset == 'motion_wm_deploy_v4':
+        parser.set_defaults(
+            independent_branch_gates=True,
+            tracking_demand_mode='smoothstep',
+            dynamics_delta_scale=0.05,
+            tracking_delta_scale=0.05,
+            dynamics_branch_gain=0.75,
+            tracking_branch_gain=0.35,
+            tracking_demand_low=0.30,
+            tracking_demand_high=0.90,
+            dynamics_demand_low=0.20,
+            dynamics_demand_high=0.90,
+            predicted_improvement_gate=True,
+            predicted_improvement_mode='feedback_line_search',
+            predicted_improvement_low=0.0,
+            predicted_improvement_high=0.02,
+            feedback_residual_scales=(0.0, 0.25, 0.50, 0.75, 1.0),
+            feedback_temperature=0.01,
+            predicted_improvement_gate_start_iteration=500,
+            predicted_improvement_gate_ramp_iterations=500,
+            residual_joint_scales=(
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                0.75, 0.75, 0.75,
+                0.50, 0.50, 0.50, 0.50,
+                0.50, 0.50, 0.50, 0.50,
+            ),
+            residual_warmup_iterations=500,
+        )
     args = parser.parse_args()
 
     if args.out is None:
@@ -331,6 +483,8 @@ def main():
     model = build_actor(args)
 
     ckpt = torch.load(args.ckpt, map_location=args.device)
+    explicit_options = {arg.split('=', 1)[0] for arg in sys.argv[1:] if arg.startswith('--')}
+    overrides = check_saved_policy_config(ckpt, model, explicit_options)
     state = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
 
     check_base_actor_matches(model, state)
@@ -375,6 +529,13 @@ def main():
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     traced.save(args.out)
+    Path(str(args.out) + '.json').write_text(json.dumps(dict(
+        checkpoint=str(Path(args.ckpt).resolve()),
+        checkpoint_sha256=hashlib.sha256(Path(args.ckpt).read_bytes()).hexdigest(),
+        checkpoint_iteration=ckpt.get('iter'), arguments=vars(args),
+        explicit_policy_overrides=overrides,
+        residual_warmup_factor=model.residual_warmup_factor(),
+    ), indent=2) + '\n')
     print(f"Saved DTERA JIT actor to {args.out}")
     print(
         f"gate_mode={args.gate_mode}, adapter_gain={args.adapter_gain}, "

@@ -73,12 +73,21 @@ task_registry.register("g1_stu_anyadapter_dtera", G1MimicDistill, G1MimicStuAnyA
 from .g1.g1_motion_wm_dtera import G1MotionWMDTERA
 from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERACfg, G1MotionWMDTERACfgPPO
 task_registry.register("g1_motion_wm_dtera", G1MotionWMDTERA, G1MotionWMDTERACfg(), G1MotionWMDTERACfgPPO())
+from .g1.g1_motion_wm_anyadapter import G1MotionWMAnyAdapter
+from .g1.g1_motion_wm_anyadapter_config import G1MotionWMAnyAdapterCfg, G1MotionWMAnyAdapterCfgPPO
+task_registry.register("g1_motion_wm_anyadapter", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterCfg(), G1MotionWMAnyAdapterCfgPPO())
 from .g1.g1_motion_wm_dtera import G1MotionWMDTERAV2
 from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERAV2Cfg, G1MotionWMDTERAV2CfgPPO
 task_registry.register("g1_motion_wm_dtera_v2", G1MotionWMDTERAV2, G1MotionWMDTERAV2Cfg(), G1MotionWMDTERAV2CfgPPO())
 from .g1.g1_motion_wm_dtera import G1MotionWMDTERALegs
 from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERALegsCfg, G1MotionWMDTERALegsCfgPPO
 task_registry.register("g1_motion_wm_dtera_legs", G1MotionWMDTERALegs, G1MotionWMDTERALegsCfg(), G1MotionWMDTERALegsCfgPPO())
+from .g1.g1_motion_wm_dtera import G1MotionWMDTERADeployV3
+from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERADeployV3Cfg, G1MotionWMDTERADeployV3CfgPPO
+task_registry.register("g1_motion_wm_dtera_deploy_v3", G1MotionWMDTERADeployV3, G1MotionWMDTERADeployV3Cfg(), G1MotionWMDTERADeployV3CfgPPO())
+from .g1.g1_motion_wm_dtera import G1MotionWMDTERADeployV4
+from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERADeployV4Cfg, G1MotionWMDTERADeployV4CfgPPO
+task_registry.register("g1_motion_wm_dtera_deploy_v4", G1MotionWMDTERADeployV4, G1MotionWMDTERADeployV4Cfg(), G1MotionWMDTERADeployV4CfgPPO())
 task_registry.register("g1_stu_anyadapter_dtera_selective", G1MimicDistill, G1MimicStuAnyAdapterDTERASelectiveCfg(), G1MimicStuAnyAdapterDTERASelectiveCfgPPO())
 task_registry.register("g1_stu_anyadapter_v5", G1MimicDistill, G1MimicStuAnyAdapterV5Cfg(), G1MimicStuAnyAdapterV5CfgPPO())
 task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdapterV6Cfg(), G1MimicStuAnyAdapterV6CfgPPO())

@@ -58,6 +58,21 @@ class TrainingReferenceTests(unittest.TestCase):
             if i < 24:
                 torch.testing.assert_close(output[0],first.corrupted[0])
 
+    def test_deployment_aligned_mode_refines_raw_input_without_corruption(self):
+        pipeline = self.pipeline(seed=42, artificial_corruption=False)
+        refiners = [MotionReferenceRefiner(self.checkpoint, 'cpu') for _ in range(2)]
+        for frame in range(40):
+            raw = np.full((2, 31), frame * .01, np.float32)
+            raw[:, 3] = np.arctan2(np.sin(3.1 + frame * .02),
+                                   np.cos(3.1 + frame * .02))
+            expected = np.stack([refiners[i].refine(raw[i]) for i in range(2)])
+            result = pipeline.process(torch.from_numpy(raw))
+            np.testing.assert_allclose(pipeline.corrupted.cpu().numpy(), raw,
+                                       atol=2e-6, rtol=2e-5)
+            np.testing.assert_allclose(result.cpu().numpy(), expected,
+                                       atol=2e-6, rtol=2e-5)
+        self.assertTrue(all(value is None for value in pipeline.corruptors))
+
     def test_mixture_output_selection_and_frozen_parameters(self):
         pipeline = self.pipeline()
         source = torch.ones(2,31,requires_grad=True)

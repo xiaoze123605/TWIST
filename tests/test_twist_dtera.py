@@ -251,6 +251,77 @@ class DTERATest(unittest.TestCase):
         self.assertTrue(torch.equal(demand[4:], torch.ones(2)))
         self.assertTrue(torch.all(demand[1:] >= demand[:-1]))
 
+    def test_predicted_improvement_gate_rejects_harmful_branch(self):
+        actor = make_actor(
+            self.base_path,
+            use_predicted_improvement_gate=True,
+            predicted_improvement_low=0.0,
+            predicted_improvement_high=0.02,
+        )
+
+        class ActionTrend(torch.nn.Module):
+            def forward(self, error, action, latent):
+                return action[:, :1].expand_as(error)
+
+        actor.error_trend_predictor = ActionTrend()
+        actor.set_training_iteration(1)
+        obs = torch.zeros(2, TOTAL_OBS_DIM)
+        tracking = obs[:, actor.tracking_history_offset:].reshape(
+            2, HISTORY_LEN, ERROR_FRAME_DIM
+        )
+        tracking[:, -1].fill_(1.0)
+        base = torch.zeros(2, NUM_ACTIONS)
+        harmful = torch.full_like(base, 0.2)
+        helpful = torch.full_like(base, -0.2)
+        dyn_gate, track_gate, dyn_gain, track_gain = (
+            actor.predicted_improvement_gates(obs, base, harmful, helpful)
+        )
+        self.assertTrue(torch.equal(dyn_gate, torch.zeros_like(dyn_gate)))
+        self.assertTrue(torch.equal(track_gate, torch.ones_like(track_gate)))
+        self.assertTrue(torch.all(dyn_gain < 0))
+        self.assertTrue(torch.all(track_gain > 0))
+
+    def test_feedback_line_search_scales_residual_by_tracking_outcome(self):
+        actor = make_actor(
+            self.base_path,
+            use_predicted_improvement_gate=True,
+            predicted_improvement_mode="feedback_line_search",
+            feedback_residual_scales=(0.0, 0.25, 0.5, 0.75, 1.0),
+            feedback_temperature=0.001,
+        )
+
+        class ActionTrend(torch.nn.Module):
+            def forward(self, error, action, latent):
+                return action[:, :1].expand_as(error)
+
+        actor.error_trend_predictor = ActionTrend()
+        actor.set_training_iteration(1)
+        obs = torch.zeros(2, TOTAL_OBS_DIM)
+        tracking = obs[:, actor.tracking_history_offset:].reshape(
+            2, HISTORY_LEN, ERROR_FRAME_DIM
+        )
+        tracking[:, -1].fill_(1.0)
+        base = torch.zeros(2, NUM_ACTIONS)
+        harmful = torch.full_like(base, 0.5)
+        helpful = torch.full_like(base, -0.5)
+        dyn_scale, track_scale, dyn_gain, track_gain = (
+            actor.predicted_improvement_gates(obs, base, harmful, helpful)
+        )
+        self.assertTrue(torch.all(dyn_scale < 0.05))
+        self.assertTrue(torch.all(track_scale > 0.95))
+        self.assertTrue(torch.all(dyn_gain <= 0.0))
+        self.assertTrue(torch.all(track_gain > 0.0))
+
+    def test_residual_joint_scales_limit_selected_candidates(self):
+        scales = [1.0, 0.75, 0.5, 0.0]
+        actor = make_actor(self.base_path, residual_joint_scales=scales)
+        dyn = torch.ones(3, NUM_ACTIONS)
+        err = 2.0 * torch.ones(3, NUM_ACTIONS)
+        selected_dyn, selected_err = actor._selected_branch_candidates(dyn, err)
+        expected = torch.tensor(scales).expand_as(dyn)
+        self.assertTrue(torch.equal(selected_dyn, expected))
+        self.assertTrue(torch.equal(selected_err, 2.0 * expected))
+
     def test_independent_branch_gates_apply_per_branch(self):
         actor = make_actor(
             self.base_path,

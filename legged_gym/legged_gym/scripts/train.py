@@ -29,23 +29,36 @@
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
 import os
+import sys
+import json
+import hashlib
+from pathlib import Path
 from datetime import datetime
+
+# Prefer this checkout over editable installs pointing at another TWIST tree.
+ROOT = Path(__file__).resolve().parents[3]
+sys.path[:0] = [str(ROOT), str(ROOT / 'legged_gym'), str(ROOT / 'rsl_rl'), str(ROOT / 'pose')]
 
 import isaacgym
 from legged_gym.envs import *
-from legged_gym.gym_utils import get_args, task_registry
+from legged_gym.gym_utils import get_args, task_registry, class_to_dict
 
 import torch
 import wandb
 
 def train(args):
     args.headless = True
+    dataset_receipt = None
+    if args.task.startswith('g1_motion_wm_dtera'):
+        from tools.prepare_motion_wm_training import verify_prepared_training_yaml
+        env_cfg, _ = task_registry.get_cfgs(args.task)
+        selected_motion = args.motion_file or env_cfg.motion.motion_file
+        dataset_receipt = verify_prepared_training_yaml(selected_motion)
     
     log_pth = LEGGED_GYM_ROOT_DIR + "/logs/{}/".format(args.proj_name) + args.exptid
-    try:
-        os.makedirs(log_pth)
-    except:
-        pass
+    if args.task.startswith('g1_motion_wm_dtera') and os.path.isdir(log_pth):
+        raise FileExistsError('Use a new --exptid; preserving existing run: ' + log_pth)
+    os.makedirs(log_pth, exist_ok=True)
     
     if args.debug:
         mode = "disabled"
@@ -72,7 +85,32 @@ def train(args):
     
     env, _ = task_registry.make_env(name=args.task, args=args)
     ppo_runner, train_cfg = task_registry.make_alg_runner(log_root=log_pth, env=env, name=args.task, args=args)
-    ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations, init_at_random_ep_len=True)
+    if hasattr(env, 'motion_reference_pipeline'):
+        import pose.utils.motion_lib_pkl as motion_module
+        paths = [env.cfg.motion.motion_file, env.cfg.motion_wm.checkpoint,
+                 train_cfg.policy.base_actor_jit_path]
+        if dataset_receipt is not None:
+            paths.append(dataset_receipt)
+        manifest = dict(task=args.task, seed=args.seed, num_envs=env.num_envs,
+                        motion_library=motion_module.__file__, control_dt=env.dt,
+                        loaded_motions=env._motion_lib.num_motions(),
+                        minimum_reference_remaining_time=getattr(
+                            env, '_minimum_reference_remaining_time', 0.0),
+                        environment=class_to_dict(env.cfg),
+                        inputs={str(Path(p).resolve()): hashlib.sha256(Path(p).read_bytes()).hexdigest()
+                                for p in paths},
+                        policy=ppo_runner.policy_cfg, algorithm=ppo_runner.alg_cfg,
+                        runner=ppo_runner.cfg)
+        Path(log_pth, 'run_manifest.json').write_text(json.dumps(manifest, indent=2, default=str) + '\n')
+    ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations,
+                     init_at_random_ep_len=getattr(train_cfg.runner, 'init_at_random_ep_len', True))
+    if hasattr(env, 'motion_reference_pipeline'):
+        completion = dict(completed_iterations=ppo_runner.current_learning_iteration,
+                          peak_torch_allocated_bytes=torch.cuda.max_memory_allocated(env.device)
+                          if str(env.device).startswith('cuda') else 0,
+                          peak_torch_reserved_bytes=torch.cuda.max_memory_reserved(env.device)
+                          if str(env.device).startswith('cuda') else 0)
+        Path(log_pth, 'training_completion.json').write_text(json.dumps(completion, indent=2) + '\n')
     
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+mode,mean_episode_return,paired_return_delta_pct,mean_episode_length_s,fall_rate_pct,fall_delta_pp,root_pos_error_m,root_error_delta_pct,joint_pos_error_rad,joint_vel_error_rad_s,keybody_error_m,feet_slip_m_s,action_rate_l2,applied_residual_l2,mean_gate
+base_only,34.401456,0.000000,10.830402,15.662347,0.000000,1.196916,0.000000,0.110140,0.713229,1.215129,0.046902,0.613081,0.000000,0.000000
+err_only,33.922930,-1.352031,10.787215,15.962533,0.300186,1.266493,5.812989,0.110167,0.721997,1.284371,0.047814,0.620563,0.037764,0.384685
+full_demand_only,34.157943,-0.648637,10.869890,15.191914,-0.470434,1.276104,6.615963,0.110469,0.723842,1.293574,0.047731,0.621920,0.044666,0.385732

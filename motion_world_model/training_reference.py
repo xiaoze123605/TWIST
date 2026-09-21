@@ -16,7 +16,8 @@ class TrainingReferencePipeline:
     MODES = ("clean", "corrupt", "wm")
 
     def __init__(self, checkpoint, num_envs, device="cpu", seed=42,
-                 mode_probabilities=(1/3, 1/3, 1/3), preset="formal", control_dt=0.02):
+                 mode_probabilities=(1/3, 1/3, 1/3), preset="formal", control_dt=0.02,
+                 artificial_corruption=True):
         if num_envs <= 0 or abs(control_dt - 0.02) > 1e-8:
             raise ValueError("Motion-WM requires positive num_envs and 50 Hz control")
         probabilities = np.asarray(mode_probabilities, dtype=float)
@@ -27,6 +28,7 @@ class TrainingReferencePipeline:
         self.mean, self.std = loaded.mean, loaded.std
         self.device = loaded.mean.device
         self.num_envs, self.seed, self.preset = num_envs, int(seed), preset
+        self.artificial_corruption = bool(artificial_corruption)
         self.probabilities = probabilities
         self.history = torch.zeros(num_envs, 25, 31, device=self.device)
         self.count = torch.zeros(num_envs, dtype=torch.long, device=self.device)
@@ -46,8 +48,13 @@ class TrainingReferencePipeline:
             env_ids = env_ids.detach().cpu().tolist()
         ids = list(env_ids)
         for i in ids:
-            self.corruptors[i] = RuntimeReferenceCorruptor.from_preset(
-                self.preset, seed=self.seed + 9973*i + 1000003*int(self.episodes[i]))
+            self.corruptors[i] = (
+                RuntimeReferenceCorruptor.from_preset(
+                    self.preset,
+                    seed=self.seed + 9973*i + 1000003*int(self.episodes[i]),
+                )
+                if self.artificial_corruption else None
+            )
             self.episodes[i] += 1
             self.previous_yaw[i] = None
             self.mode[i] = int(self.mode_rngs[i].choice(3, p=self.probabilities))
@@ -66,7 +73,10 @@ class TrainingReferencePipeline:
         self.clean.copy_(clean)
         continuous = []
         for i, reference in enumerate(clean.detach().cpu().numpy()):
-            value = self.corruptors[i].corrupt(reference).copy()
+            value = (
+                self.corruptors[i].corrupt(reference).copy()
+                if self.artificial_corruption else reference.copy()
+            )
             value[3] = unwrap_angle_near(float(value[3]), self.previous_yaw[i])
             self.previous_yaw[i] = float(value[3])
             continuous.append(value)

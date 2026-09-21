@@ -122,14 +122,20 @@ class G1MimicDistill(AnyAdapterHistoryMixin, HumanoidMimic):
         elif motion_ids is None:
             motion_ids = self._motion_lib.sample_motions(n, motion_difficulty=self.motion_difficulty)
             if self._rand_reset:
-                motion_times = self._motion_lib.sample_time(motion_ids)
+                motion_times = self._motion_lib.sample_time(
+                    motion_ids,
+                    minimum_remaining_time=getattr(self, '_minimum_reference_remaining_time', 0.0),
+                )
             else:
                 motion_times = torch.zeros(
                     motion_ids.shape, device=self.device, dtype=torch.float
                 )
         else:
             if self._rand_reset:
-                motion_times = self._motion_lib.sample_time(motion_ids)
+                motion_times = self._motion_lib.sample_time(
+                    motion_ids,
+                    minimum_remaining_time=getattr(self, '_minimum_reference_remaining_time', 0.0),
+                )
             else:
                 motion_times = torch.zeros(
                     motion_ids.shape, device=self.device, dtype=torch.float

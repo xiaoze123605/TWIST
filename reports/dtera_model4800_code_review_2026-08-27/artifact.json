@@ -1,0 +1,172 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "DTERA model_4800：双支路与自适应门控诊断",
+    "description": "基于 4800 轮消融、训练机制日志与当前代码的诊断和修改优先级。",
+    "generatedAt": "2026-08-27T18:00:00+08:00",
+    "charts": [
+      {
+        "id": "seed_delta",
+        "title": "DR 下各 seed 的回报变化",
+        "subtitle": "相对同 seed base_only；两个残差模式的方向不稳定",
+        "type": "bar",
+        "dataset": "seed_deltas",
+        "sourceId": "ablation",
+        "valueFormat": "percent",
+        "encodings": {
+          "x": {"field": "seed", "type": "nominal", "label": "Seed"},
+          "y": {"field": "delta", "type": "quantitative", "label": "相对 base 回报变化"},
+          "color": {"field": "mode", "type": "nominal", "label": "模式"},
+          "tooltip": [
+            {"field": "delta", "type": "quantitative", "label": "变化", "format": "percent"},
+            {"field": "episodes", "type": "quantitative", "label": "Episodes"}
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "ablation_table",
+        "title": "model_4800 消融摘要",
+        "subtitle": "DR 为 3 seed 均值；no-DR 为 seed 42",
+        "dataset": "ablation_metrics",
+        "sourceId": "ablation",
+        "defaultSort": {"field": "order", "direction": "asc"},
+        "columns": [
+          {"field": "mode", "label": "模式", "type": "text"},
+          {"field": "regime", "label": "评估", "type": "text"},
+          {"field": "return", "label": "回报", "format": "number"},
+          {"field": "delta_pp", "label": "相对 base", "format": "number", "unit": "%"},
+          {"field": "fall_pp", "label": "跌倒率", "format": "number", "unit": "%"},
+          {"field": "root_error", "label": "Root error", "format": "number"}
+        ]
+      },
+      {
+        "id": "status_table",
+        "title": "实现状态与主要问题",
+        "subtitle": "已实现不等于已经证明有效",
+        "dataset": "findings",
+        "sourceId": "actor_code",
+        "defaultSort": {"field": "priority", "direction": "asc"},
+        "columns": [
+          {"field": "component", "label": "组件", "type": "text"},
+          {"field": "status", "label": "状态", "type": "text"},
+          {"field": "evidence", "label": "证据", "type": "text"},
+          {"field": "issue", "label": "最大问题", "type": "text"}
+        ]
+      }
+    ],
+    "sources": [
+      {"id": "ablation", "label": "model_4800 消融结果", "path": "results/dtera_model4800/aggregate_dr_3seed.csv"},
+      {"id": "ablation_summary", "label": "model_4800 消融摘要", "path": "results/dtera_model4800/summary.md"},
+      {"id": "training_report", "label": "DTERA revision4 训练机制报告", "path": "reports/dtera_revision4_iter4522/artifact.json"},
+      {"id": "actor_code", "label": "DTERA actor 与门控实现", "path": "rsl_rl/rsl_rl/modules/actor_critic_twist_dtera.py"},
+      {"id": "optimizer_code", "label": "PPODTERA 优化器实现", "path": "rsl_rl/rsl_rl/algorithms/ppo_dtera.py"},
+      {"id": "config_code", "label": "DTERA 配置", "path": "legged_gym/legged_gym/envs/g1/g1_mimic_distill_anyadapter_config.py"},
+      {"id": "evaluator_code", "label": "双支路消融评估器", "path": "legged_gym/legged_gym/scripts/evaluate_dual_branch.py"}
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# DTERA model_4800：双支路与自适应门控诊断"
+      },
+      {
+        "id": "summary",
+        "type": "markdown",
+        "body": "## 技术结论\n\n**目前不应放大 0.03 残差上限，也不应直接再训 30000 轮。** 双支路的网络、输入、梯度和两套 latent 均已真实实现，但 4800 轮消融没有证明其在 DR 下优于冻结 base：err_only 平均回报 -1.35%，full_demand_only -0.65%，两者 95% CI 均跨 0。\n\n旧门控有保护作用：no-DR 中 gate_off 比 base 低 4.42%。但旧 demand gate 的 p10/p90 约为 0.263/0.565，几乎不全关也不全开，更像缩放器而不是选择器。当前新增 selective 独立门在代码上已接通，但 model_4800 未按它训练，且动力学门固定为 0.5，站立和零误差时也开启；这是最需先修的代码问题。"
+      },
+      {
+        "id": "findings_text",
+        "type": "markdown",
+        "sourceId": "ablation_summary",
+        "body": "## 关键发现\n\n1. **双支路有梯度，但没有稳定净增益。** no-DR 下 dyn_only +1.13%、err_only +1.66%；DR 下 seed 42 为正，seed 43/44 主要为负。\n2. **单支路增益没有在 full 中叠加。** no-DR 中 full 回报低于 err_only，root error 也更高，说明更像支路重叠或干扰，而非残差太小。\n3. **0.03 上限不是当前瓶颈。** 第 4489 轮 dynamics/tracking 饱和率约 0.13%/1.94%，candidate L2 约 0.130、gate 后约 0.052，不支持直接扩大 scale。\n4. **WM 梯度链已修好。** HistoryEncoder WM grad 约 1e-3，不是当前故障。"
+      },
+      {"id": "chart_block", "type": "chart", "chartId": "seed_delta"},
+      {"id": "ablation_block", "type": "table", "tableId": "ablation_table"},
+      {
+        "id": "dual_branch",
+        "type": "markdown",
+        "sourceId": "actor_code",
+        "body": "## 双支路实现评价\n\n**结构完成度高，学习机制完成度中等。** dynamics 使用 dynamics history latent、当前状态和 base action；tracking 使用当前 53D 规范化跟踪误差、独立误差历史 latent 和 base action。两支路有独立 head 和 residual，再组合、门控，不是伪双支路。\n\n最大问题是 **支路归因不可识别**：PPO 只看合成 action，未明确每条支路的责任。branch cosine 约 0.31，full 又不优于 err_only，说明职责分离不足。先不要加强制正交 loss，因为物理上两支路可能需要同方向补偿；更稳妥的是按 iteration 做 branch dropout 或 full/dyn/err 交替训练，提供因果暴露。\n\n另一个问题是 dynamics HistoryEncoder 只归 WM optimizer，history_policy_grad_scale=0，PPO 不更新它。这保护 WM 表征，但可能出现“适合预测、不一定适合控制”。应单独对照 0 与 0.05/0.10 的小梯度，不要和门控修改混在同一次实验。"
+      },
+      {
+        "id": "gating",
+        "type": "markdown",
+        "sourceId": "actor_code",
+        "body": "## 自适应门控实现评价\n\n**旧共享门完整，但选择性弱。** demand_only 用同一个跟踪误差 demand 同时控制 dynamics 和 tracking；它能阻止残差全量直通，却不能独立分配两种机制，gate 也长期集中在中间。\n\n**confidence 和 risk 目前只适合诊断。** uncertainty 与实际误差相关约 0.35–0.40，高不确定组实际误差约高 15%，有排序信号；但 exp(-u) 的 confidence 均值约 0.993，几乎不调节。risk predictor 能分开高低风险状态，但 candidate-base 的平均风险差只有约 5.9e-4，safety 约 0.994；它是状态风险分类器，不是合格的残差动作仲裁器。\n\n**新 selective 独立门机械接通但未验收。** tracking 的 0.30–0.80 smoothstep 是合理起点；dynamics 在 confidence strength=0 时却恒为 0.5，站立也开，会削弱静止安全与 sim-to-real 稳健性。"
+      },
+      {"id": "status_block", "type": "table", "tableId": "status_table"},
+      {
+        "id": "scope",
+        "type": "markdown",
+        "body": "## 范围、数据与指标\n\n对象为 checkpoint model_4800.pt。no-DR 是 seed 42 的 7 模式；DR 是 seed 42/43/44 的 base、err-only、full-demand，每个 run 约 1050–1120 episodes。主要指标为 episode return、fall rate、root tracking error 和 applied residual L2。训练日志只用于检查梯度、饱和、gate 分布与辅助模型，不把随课程变化的训练回报当成固定评估结论。"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 方法\n\n以同 seed base 为基线计算回报变化，再汇总 3 seed 均值和 95% CI；用 no-DR 消融检查单支路增益能否在 full 中叠加。随后把统计结果与 actor 的分支输入、门控公式、optimizer 所有权和配置直接对齐，区分“代码链路存在”和“多 seed 效果已证明”。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 限制、不确定性与稳健性\n\nDR 只有 3 个 seed，CI 很宽，只能否定“已经稳定提升”，不能证明残差一定有害。当前同 seed 评估也不是严格 episode 配对：不同 action 改变重置时间后，后续 motion 和 DR 随机序列会分叉。需要固定 motion ID、start frame 和 DR 参数的 scenario manifest。另一个关键限制是 model_4800 使用旧共享 demand gate 训练，不能直接证明新 selective gate 有效。"
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## 修改方案（按优先级）\n\n1. **P0：修评估的真配对性。** 固定每个 scenario 的 motion ID、start frame、DR 向量和时长，输出 base/dyn/err/full 的逐 scenario 差值及 paired bootstrap CI。\n2. **P0：修 dynamics 门常开。** 先用同一个规范化误差 magnitude，但让 dynamics 更早开启：D_dyn=smoothstep(m, 0.10, 0.50)，g_dyn=0.5×D_dyn；tracking 保持 smoothstep(m, 0.30, 0.80)。站立时两门都严格归零。\n3. **P0：优化 actor 热路径。** demand_only 且 confidence/risk strength=0 时，不要在 actor_mean 每步跑 3-member WM 和两次 risk；完整诊断改为每次 update 抽样一次。action 数学不变，但训练和 CPU 推理都会加速。\n4. **P1：先用 4800 权重做 inference-only gate 网格。** 比较 base、old-demand、err-only、修正后的 independent gate；dyn scale 测 0.25/0.50，使用固定 scenario 和至少 5 seed。建议验收线：return 平均高于 base 1%，root/keybody 不恶化超过 1%，fall rate 不增加 0.5 pp。\n5. **P1：通过后只微调 500–1000 轮。** 用 gate interpolation 平滑切换，不改 0.03 scale、reward、WM target 或 PPO loss。\n6. **P2：单独测 dynamics encoder 控制对齐。** 比较 history_policy_grad_scale 0、0.05、0.10，并保持无重叠 optimizer step。\n7. **P2：仍有支路干扰时，加 iteration-level branch dropout/交替训练。** 不做每步随机门抖动，也不先加强制正交 loss。\n8. **P3：最后再校准 confidence/risk。** confidence 用 held-out 分位数或温度校准；risk 需要 candidate-vs-base 的 counterfactual 目标。多 seed 不增益就保留为诊断。\n9. **P3：实机前补齐观测与安全。** root linear velocity 估计、延迟/噪声/丢包注入、残差变化率和绝对限幅、shadow logging、系绳低功率验证都要完成。"
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "body": "## 仍待回答\n\n- 在固定 motion/start/DR scenario 下，dyn 与 err 分别改善哪些动作？\n- 修正后的 dynamics 早开门能否保留 seed 42 增益并消除 seed 43/44 退化？\n- history_policy_grad_scale=0.05 能否改善 dynamics-only DR 效果而不破坏 WM？\n- 跳过 WM/risk 热路径后，每轮训练和 CPU inference 分别加速多少？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-27T18:00:00+08:00",
+    "status": "complete",
+    "datasets": {
+      "seed_deltas": [
+        {"seed": "42", "mode": "err_only", "delta": 0.0217, "episodes": 1064},
+        {"seed": "42", "mode": "full_demand", "delta": 0.0314, "episodes": 1053},
+        {"seed": "43", "mode": "err_only", "delta": -0.0312, "episodes": 1068},
+        {"seed": "43", "mode": "full_demand", "delta": -0.0421, "episodes": 1077},
+        {"seed": "44", "mode": "err_only", "delta": -0.0311, "episodes": 1119},
+        {"seed": "44", "mode": "full_demand", "delta": -0.0088, "episodes": 1092}
+      ],
+      "ablation_metrics": [
+        {"order": 1, "mode": "base_only", "regime": "no-DR seed42", "return": 33.9913, "delta_pp": 0.00, "fall_pp": 15.55, "root_error": 1.2458},
+        {"order": 2, "mode": "dyn_only", "regime": "no-DR seed42", "return": 34.3759, "delta_pp": 1.13, "fall_pp": 16.53, "root_error": 1.2708},
+        {"order": 3, "mode": "err_only", "regime": "no-DR seed42", "return": 34.5546, "delta_pp": 1.66, "fall_pp": 13.61, "root_error": 1.1502},
+        {"order": 4, "mode": "gate_off", "regime": "no-DR seed42", "return": 32.4888, "delta_pp": -4.42, "fall_pp": 14.56, "root_error": 1.3498},
+        {"order": 5, "mode": "full_demand", "regime": "no-DR seed42", "return": 34.4650, "delta_pp": 1.39, "fall_pp": 16.41, "root_error": 1.2769},
+        {"order": 6, "mode": "base_only", "regime": "DR 3-seed", "return": 34.4015, "delta_pp": 0.00, "fall_pp": 15.66, "root_error": 1.1970},
+        {"order": 7, "mode": "err_only", "regime": "DR 3-seed", "return": 33.9229, "delta_pp": -1.35, "fall_pp": 15.96, "root_error": 1.2665},
+        {"order": 8, "mode": "full_demand", "regime": "DR 3-seed", "return": 34.1579, "delta_pp": -0.65, "fall_pp": 15.19, "root_error": 1.2761}
+      ],
+      "findings": [
+        {"priority": 1, "component": "双支路结构", "status": "已实现", "evidence": "独立输入、latent、head、delta 和非零梯度", "issue": "PPO 只通过合成 action 归因"},
+        {"priority": 2, "component": "旧共享 demand gate", "status": "选择性弱", "evidence": "gate-off 退化；p10/p90 约 0.263/0.565", "issue": "一个门控两支路，几乎不全关或全开"},
+        {"priority": 3, "component": "新 selective 独立门", "status": "已接通，未验收", "evidence": "tracking smoothstep 和双 gate 已进入 actor", "issue": "dynamics gate 当前恒为 0.5"},
+        {"priority": 4, "component": "WM confidence", "status": "仅诊断可用", "evidence": "corr 约 0.35–0.40；confidence 约 0.993", "issue": "尺度未校准，几乎不改变动作"},
+        {"priority": 5, "component": "Risk safety", "status": "动作仲裁不足", "evidence": "candidate-base delta risk 约 5.9e-4", "issue": "target 对动作反事实利弊不敏感"},
+        {"priority": 6, "component": "Actor 计算路径", "status": "功能对，性能浪费", "evidence": "demand-only 每步仍算 WM ensemble 和两次 risk", "issue": "无效诊断拖慢训练和 CPU 推理"}
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {"id": "ablation", "label": "model_4800 消融结果", "path": "results/dtera_model4800/aggregate_dr_3seed.csv"},
+    {"id": "ablation_summary", "label": "model_4800 消融摘要", "path": "results/dtera_model4800/summary.md"},
+    {"id": "training_report", "label": "DTERA revision4 训练机制报告", "path": "reports/dtera_revision4_iter4522/artifact.json"},
+    {"id": "actor_code", "label": "DTERA actor 与门控实现", "path": "rsl_rl/rsl_rl/modules/actor_critic_twist_dtera.py"},
+    {"id": "optimizer_code", "label": "PPODTERA 优化器实现", "path": "rsl_rl/rsl_rl/algorithms/ppo_dtera.py"},
+    {"id": "config_code", "label": "DTERA 配置", "path": "legged_gym/legged_gym/envs/g1/g1_mimic_distill_anyadapter_config.py"},
+    {"id": "evaluator_code", "label": "双支路消融评估器", "path": "legged_gym/legged_gym/scripts/evaluate_dual_branch.py"}
+  ]
+}

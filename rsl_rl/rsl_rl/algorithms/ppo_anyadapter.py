@@ -378,6 +378,10 @@ class PPOAnyAdapter(PPO):
             "gate_fraction_lt_0_1", "gate_fraction_gt_0_9",
             "dynamics_gate_mean", "dynamics_gate_p10", "dynamics_gate_p90",
             "tracking_gate_mean", "tracking_gate_p10", "tracking_gate_p90",
+            "dynamics_improvement_gate_mean", "tracking_improvement_gate_mean",
+            "dynamics_predicted_improvement_mean",
+            "tracking_predicted_improvement_mean",
+            "predicted_improvement_gate_alpha",
             "p_base_mean", "p_candidate_mean", "delta_risk_mean", "delta_risk_p95",
             "synthetic_stand_candidate_delta", "synthetic_stand_applied_delta",
         )

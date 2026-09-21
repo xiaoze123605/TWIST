@@ -45,7 +45,14 @@ import builtins
 
 
 import numpy as np
-from rsl_rl.algorithms import PPORMA, PPO, PPOAnyAdapter, PPOAny2Track, PPODTERA
+from rsl_rl.algorithms import (
+    PPORMA,
+    PPO,
+    PPOAnyAdapter,
+    PPOAny2Track,
+    PPOAnyAdapterOpenTrack,
+    PPODTERA,
+)
 from rsl_rl.modules import *
 from rsl_rl.storage.replay_buffer import ReplayBuffer
 from rsl_rl.env import VecEnv
@@ -109,6 +116,7 @@ class OnPolicyRunnerMimic:
         self._print_anyadapter_init_debug(actor_critic)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
+        self.constant_save_interval = self.cfg.get("constant_save_interval", False)
         self.dagger_update_freq = self.alg_cfg["dagger_update_freq"]
 
         if "Transformer" in self.cfg["policy_class_name"]:
@@ -222,6 +230,8 @@ class OnPolicyRunnerMimic:
         entropy_coef = 0.
         grad_penalty_coef = 0.
 
+        if init_at_random_ep_len and hasattr(self.env, 'motion_reference_pipeline'):
+            raise ValueError('Motion-WM uses motion-time RSI; do not randomize episode counters after reset')
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         obs = self.env.get_observations()
@@ -321,7 +331,16 @@ class OnPolicyRunnerMimic:
             if self.log_dir is not None:
                 self.log(locals())
             completed_iteration = it + 1
-            if completed_iteration < 2500:
+            if self.constant_save_interval:
+                if completed_iteration % self.save_interval == 0:
+                    self.save(
+                        os.path.join(
+                            self.log_dir,
+                            'model_{}.pt'.format(completed_iteration),
+                        ),
+                        iteration=completed_iteration,
+                    )
+            elif completed_iteration < 2500:
                 if completed_iteration % self.save_interval == 0:
                     self.save(
                         os.path.join(
@@ -392,7 +411,9 @@ class OnPolicyRunnerMimic:
 
         wandb_dict['Loss/value_func'] = locs['mean_value_loss']
         wandb_dict['Loss/surrogate'] = locs['mean_surrogate_loss']
-        wandb_dict['Loss/entropy_coef'] = locs['entropy_coef']
+        # ``entropy_coef`` in learn_RL is a legacy local initialized to zero;
+        # report the coefficient actually used by the PPO loss.
+        wandb_dict['Loss/entropy_coef'] = self.alg.entropy_coef
         wandb_dict['Loss/learning_rate'] = self.alg.learning_rate
 
         anyadapter_metrics = getattr(self.alg, "anyadapter_metrics", None)
@@ -504,6 +525,11 @@ class OnPolicyRunnerMimic:
                 "tracking_gate_mean": "DTERA err gate mean",
                 "tracking_gate_p10": "DTERA err gate p10",
                 "tracking_gate_p90": "DTERA err gate p90",
+                "dynamics_improvement_gate_mean": "DTERA dyn feedback scale",
+                "tracking_improvement_gate_mean": "DTERA err feedback scale",
+                "dynamics_predicted_improvement_mean": "DTERA dyn predicted gain",
+                "tracking_predicted_improvement_mean": "DTERA err predicted gain",
+                "predicted_improvement_gate_alpha": "DTERA improve gate alpha",
                 "risk_loss": "DTERA risk loss",
                 "risk_positive_ratio": "DTERA risk positive",
                 "risk_valid_ratio": "DTERA risk valid",
@@ -655,6 +681,9 @@ class OnPolicyRunnerMimic:
             state_dict['wm_optimizer_state_dict'] = self.alg.wm_optimizer.state_dict()
         if hasattr(self.alg, "risk_optimizer"):
             state_dict['risk_optimizer_state_dict'] = self.alg.risk_optimizer.state_dict()
+        if getattr(self.alg.actor_critic, 'is_dtera', False):
+            state_dict['training_config'] = dict(policy=self.policy_cfg, algorithm=self.alg_cfg,
+                                                  runner=self.cfg)
         torch.save(state_dict, path)
 
     def load(self, path, load_optimizer=True):
@@ -714,6 +743,8 @@ class OnPolicyRunnerMimic:
                 )
                 for group in self.alg.risk_optimizer.param_groups:
                     group['weight_decay'] = 0.0
+            if hasattr(self.alg, "on_optimizer_state_loaded"):
+                self.alg.on_optimizer_state_loaded()
         self.current_learning_iteration = int(
             loaded_dict.get("iter", filename_iteration)
         )

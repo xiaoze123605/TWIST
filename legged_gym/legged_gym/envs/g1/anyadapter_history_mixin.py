@@ -35,6 +35,23 @@ def _euler_from_quaternion(quaternion):
 
 
 class AnyAdapterHistoryMixin:
+    def get_observations(self):
+        observations = super().get_observations()
+        # G1MimicDistill performs one final reset after base construction
+        # without recomputing observations. Cache the state from the exact
+        # observation handed to the policy, so its ensuing action has a mate.
+        if (
+            getattr(self, "use_anyadapter", False)
+            and hasattr(self, "anyadapter_pre_step_state_valid")
+            and not bool(self.anyadapter_pre_step_state_valid.all())
+        ):
+            base_dim = int(getattr(self, "base_num_obs_before_anyadapter", 1155))
+            base_obs = observations[:, :base_dim]
+            state = base_obs.index_select(1, self.anyadapter_state_indices)
+            self.anyadapter_pre_step_state.copy_(state.detach())
+            self.anyadapter_pre_step_state_valid.fill_(True)
+        return observations
+
     def _init_anyadapter_history(self):
         self.use_anyadapter = bool(getattr(self.cfg.env, "use_anyadapter", False))
         if not self.use_anyadapter:
@@ -118,6 +135,17 @@ class AnyAdapterHistoryMixin:
             device=self.device,
             dtype=torch.float32,
         )
+        # State observed by the policy before it chooses the next action.  The
+        # matching executed action is attached in _commit_anyadapter_transition.
+        self.anyadapter_pre_step_state = torch.zeros(
+            self.num_envs,
+            self.anyadapter_state_dim,
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self.anyadapter_pre_step_state_valid = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
         if self.use_tracking_error_history:
             self.tracking_error_history = torch.zeros(
                 self.num_envs,
@@ -160,6 +188,8 @@ class AnyAdapterHistoryMixin:
             return
         self.anyadapter_history[env_ids] = 0.0
         self.anyadapter_prev_actions[env_ids] = 0.0
+        self.anyadapter_pre_step_state[env_ids] = 0.0
+        self.anyadapter_pre_step_state_valid[env_ids] = False
         if getattr(self, "use_tracking_error_history", False):
             self.tracking_error_history[env_ids] = 0.0
             self.tracking_prev_ref_dof_pos[env_ids] = 0.0
@@ -267,39 +297,28 @@ class AnyAdapterHistoryMixin:
         current_actions=None,
         tracking_reference=None,
     ) -> torch.Tensor:
-        """Append flattened history to base observations and update buffer.
+        """Append past transition history and cache the current pre-step state.
 
-        Call this after base_obs has been computed but before it is returned to
-        the runner.  Each frame is [selected_state_from_base_obs, self.actions].
+        This runs while constructing observation_t, before policy action_t is
+        known.  It must therefore not write state_t into the transition history.
+        ``_commit_anyadapter_transition`` later pairs this cached state_t with
+        the exact action_t executed by the environment.
         """
         if not getattr(self, "use_anyadapter", False):
             return base_obs
-        if current_actions is None:
-            current_actions = getattr(self, "actions", self.anyadapter_prev_actions)
         dyn_state = base_obs.index_select(dim=1, index=self.anyadapter_state_indices)
-        new_frame = torch.cat([dyn_state, current_actions.detach()], dim=-1)
-        rolled_history = torch.roll(self.anyadapter_history, shifts=-1, dims=1)
-        rolled_history[:, -1, :] = new_frame
+        self.anyadapter_pre_step_state.copy_(dyn_state.detach())
+        self.anyadapter_pre_step_state_valid.fill_(True)
         if self.anyadapter_fill_history_on_reset:
-            reset_mask = (self.episode_length_buf <= 1).view(-1, 1, 1)
+            reset_mask = (self.episode_length_buf == 0).view(-1, 1, 1)
             reset_frame = torch.cat(
-                [dyn_state, torch.zeros_like(current_actions)], dim=-1
+                [dyn_state, torch.zeros_like(self.anyadapter_prev_actions)], dim=-1
             )
             initial_history = reset_frame.unsqueeze(1).expand(
                 -1, self.anyadapter_history_len, -1
             )
             self.anyadapter_history = torch.where(
-                reset_mask, initial_history, rolled_history
-            )
-        else:
-            self.anyadapter_history = rolled_history
-        self.anyadapter_prev_actions = current_actions.detach().clone()
-        if self.anyadapter_fill_history_on_reset:
-            reset_rows = (self.episode_length_buf <= 1).view(-1, 1)
-            self.anyadapter_prev_actions = torch.where(
-                reset_rows,
-                torch.zeros_like(self.anyadapter_prev_actions),
-                self.anyadapter_prev_actions,
+                reset_mask, initial_history, self.anyadapter_history
             )
         parts = [base_obs, self.anyadapter_history.reshape(self.num_envs, -1)]
         if self.use_tracking_error_history:
@@ -321,3 +340,23 @@ class AnyAdapterHistoryMixin:
             parts.append(self.tracking_error_history.reshape(self.num_envs, -1))
         parts.append(self._anyadapter_context(base_obs))
         return torch.cat(parts, dim=-1)
+
+    def _commit_anyadapter_transition(self, executed_actions: torch.Tensor) -> None:
+        """Commit aligned ``(state_t, action_t)`` before physics advances to t+1."""
+        if not getattr(self, "use_anyadapter", False):
+            return
+        if executed_actions.shape != (self.num_envs, self.num_actions):
+            raise ValueError(
+                "executed AnyAdapter action must have shape "
+                f"({self.num_envs}, {self.num_actions}), got {tuple(executed_actions.shape)}"
+            )
+        if not bool(self.anyadapter_pre_step_state_valid.all()):
+            raise RuntimeError("AnyAdapter pre-step state was not cached before action execution")
+        frame = torch.cat(
+            [self.anyadapter_pre_step_state, executed_actions.detach()], dim=-1
+        )
+        self.anyadapter_history = torch.cat(
+            [self.anyadapter_history[:, 1:], frame.unsqueeze(1)], dim=1
+        )
+        self.anyadapter_prev_actions.copy_(executed_actions.detach())
+        self.anyadapter_pre_step_state_valid.fill_(False)

@@ -271,7 +271,7 @@ def _should_use_anyadapter(
         return True
     if detected_obs_dim == ANY2TRACK_OBS_DIM:
         print(
-            "[Any2Track] Detected 7001-D layer-adapter policy; "
+            "[AnyAdapter-OpenTrack] Detected 7001-D layerwise AnyAdapter policy; "
             "enabling 79-frame runtime history automatically."
         )
         return True
@@ -368,6 +368,7 @@ class RealTimePolicyController:
                 fill_history_on_first_observation=(
                     self.use_any2track or self.use_dtera
                 ),
+                commit_history_after_action=self.use_any2track,
                 tracking_error_history_len=(
                     ANYADAPTER_HISTORY_LEN if self.use_dtera else 0
                 ),
@@ -585,6 +586,13 @@ class RealTimePolicyController:
         self.trace_rows = []
         if self.metrics is not None:
             self.metrics = MotionDemoMetrics()
+        trace_stream = None
+        if self.trace_out:
+            os.makedirs(os.path.dirname(os.path.abspath(self.trace_out)), exist_ok=True)
+            # DTERA traces can exceed 200 MB.  Stream each row instead of
+            # retaining thousands of nested history arrays until shutdown;
+            # this also leaves a valid prefix if a native renderer fails.
+            trace_stream = open(self.trace_out, "w")
         # Optionally record video
         if self.record_video:
             import imageio
@@ -638,13 +646,21 @@ class RealTimePolicyController:
                         frame_id = i // self.sim_decimation
                         self.redis_client.set("sim_ready_g1", frame_id)
                         deadline = time.monotonic() + 30.0
+                        last_request_publish = time.monotonic()
                         while True:
+                            now = time.monotonic()
+                            # The high-level process clears stale handshake
+                            # keys on startup. Re-publish while waiting so a
+                            # near-simultaneous manual launch cannot lose frame 0.
+                            if now - last_request_publish >= 0.05:
+                                self.redis_client.set("sim_ready_g1", frame_id)
+                                last_request_publish = now
                             raw, clean_raw, received, trace_raw = self.redis_client.mget(
                                 "action_mimic_g1", "action_mimic_clean_g1", "action_mimic_frame_g1", "action_mimic_trace_g1"
                             )
                             if received is not None and int(received) == frame_id:
                                 break
-                            if time.monotonic() > deadline:
+                            if now > deadline:
                                 raise TimeoutError(f"Missing reference frame {frame_id}")
                             time.sleep(0.001)
                     elif self.metrics is not None:
@@ -739,7 +755,9 @@ class RealTimePolicyController:
                             row["dtera"] = {k: v.detach().cpu().numpy().reshape(-1).tolist() for k, v in diag.items()}
                             row["dynamics_history"] = runtime.history.tolist()
                             row["tracking_history"] = runtime.tracking_error_history.tolist()
-                        self.trace_rows.append(row)
+                        trace_stream.write(json.dumps(row) + "\n")
+                        if frame_id % 50 == 0:
+                            trace_stream.flush()
 
                     self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
@@ -780,26 +798,29 @@ class RealTimePolicyController:
             print(f"Error in run: {e}")
             raise
         finally:
-            if self.trace_out:
-                os.makedirs(os.path.dirname(os.path.abspath(self.trace_out)), exist_ok=True)
-                with open(self.trace_out, "w") as stream:
-                    for row in self.trace_rows:
-                        stream.write(json.dumps(row) + "\n")
+            if trace_stream is not None:
+                trace_stream.close()
             if mp4_writer is not None:
-                print(f"Rendering {len(video_frames)} cached video frames...")
-                video_renderer = mujoco.Renderer(self.model, height=480, width=640)
-                render_data = mujoco.MjData(self.model)
-                for qpos in video_frames:
-                    render_data.qpos[:] = qpos
-                    mujoco.mj_forward(self.model, render_data)
-                    self.camera.lookat = render_data.xpos[
-                        self.model.body("pelvis").id
-                    ]
-                    video_renderer.update_scene(render_data, camera=self.camera)
-                    mp4_writer.append_data(video_renderer.render())
-                mp4_writer.close()
-                video_renderer.close()
-                print(f"Video saved to {self.video_path}")
+                if video_frames:
+                    print(f"Rendering {len(video_frames)} cached video frames...")
+                    video_renderer = mujoco.Renderer(self.model, height=480, width=640)
+                    render_data = mujoco.MjData(self.model)
+                    try:
+                        for qpos in video_frames:
+                            render_data.qpos[:] = qpos
+                            mujoco.mj_forward(self.model, render_data)
+                            self.camera.lookat = render_data.xpos[
+                                self.model.body("pelvis").id
+                            ]
+                            video_renderer.update_scene(render_data, camera=self.camera)
+                            mp4_writer.append_data(video_renderer.render())
+                    finally:
+                        mp4_writer.close()
+                        video_renderer.close()
+                    print(f"Video saved to {self.video_path}")
+                else:
+                    mp4_writer.close()
+                    print("Skipping video render: simulation produced no policy frames")
 
             if self.metrics is not None:
                 summary = self.metrics.save(self.metrics_out)
@@ -838,13 +859,15 @@ def main_low_level_sim(args):
     try:
         controller.run()
     finally:
-        if args.plot_dir and os.path.isfile(args.trace_out):
+        if args.plot_dir and os.path.isfile(args.trace_out) and os.path.getsize(args.trace_out) > 0:
             import subprocess
             import sys
             plotter = os.path.join(os.path.dirname(__file__), '..', 'tools', 'plot_sim_trace.py')
             result = subprocess.run([sys.executable, plotter, '--trace', args.trace_out, '--out', args.plot_dir])
             if result.returncode:
                 print('Curve export failed; raw trace is preserved:', args.trace_out)
+        elif args.plot_dir:
+            print('Skipping curve export: trace contains no frames')
 
 
 if __name__ == "__main__":

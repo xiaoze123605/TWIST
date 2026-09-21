@@ -158,8 +158,17 @@ class RuntimeReferenceCorruptor:
         self._hold_state = current.copy()
 
         self._delay_buffer.append(current.copy())
+        # Sample the inclusive integer range from ``random`` rather than
+        # ``Generator.integers``.  A long 4096-env training run observed one
+        # Generator whose ``integers`` attribute became non-callable after
+        # roughly 128M environment steps, while ``random`` was still healthy
+        # in the same call.  This is the same discrete uniform distribution
+        # and avoids losing a multi-hour run to that NumPy failure mode.
         delay = (
-            int(self.rng.integers(0, self.config.delay_max_frames + 1))
+            min(
+                int(self.rng.random() * (self.config.delay_max_frames + 1)),
+                self.config.delay_max_frames,
+            )
             if self.config.delay_max_frames > 0
             else 0
         )

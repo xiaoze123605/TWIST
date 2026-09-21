@@ -33,5 +33,6 @@ from .ppo import PPO
 from .ppo_anyadapter import PPOAnyAdapter
 from .ppo_dtera import PPODTERA
 from .ppo_any2track import PPOAny2Track
+from .ppo_anyadapter_opentrack import PPOAnyAdapterOpenTrack
 from .dagger import DAgger
 from .dagger_ppo import DaggerPPO

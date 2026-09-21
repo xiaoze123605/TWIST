@@ -1,0 +1,262 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "DTERA Selective Gate：第 1600 轮阶段诊断",
+    "description": "基于 0–1599 轮训练日志、model_1550 checkpoint、旧版同阶段日志和目标测试的机制与效果诊断。",
+    "generatedAt": "2026-08-31T00:00:00+08:00",
+    "charts": [
+      {
+        "id": "reward_trend",
+        "title": "100 轮窗口平均训练回报",
+        "subtitle": "0–1599 轮；课程难度同步变化，因此只用于观察稳定性",
+        "type": "line",
+        "dataset": "window_trends",
+        "sourceId": "training_new",
+        "encodings": {
+          "x": {"field": "mid_iteration", "type": "quantitative", "label": "迭代轮次"},
+          "y": {"field": "mean_reward", "type": "quantitative", "label": "平均训练回报"},
+          "tooltip": [
+            {"field": "window", "type": "nominal", "label": "窗口"},
+            {"field": "episode_length", "type": "quantitative", "label": "平均 episode 长度"},
+            {"field": "motion_difficulty", "type": "quantitative", "label": "motion difficulty"}
+          ]
+        }
+      },
+      {
+        "id": "gate_selectivity",
+        "title": "旧共享门与新跟踪门的分布对比",
+        "subtitle": "两版均取迭代 1500–1599 的均值；数值范围均为 0–1",
+        "type": "bar",
+        "dataset": "gate_comparison",
+        "sourceId": "training_comparison",
+        "encodings": {
+          "x": {"field": "metric", "type": "nominal", "label": "门控分布指标"},
+          "y": {"field": "value", "type": "quantitative", "label": "数值"},
+          "color": {"field": "version", "type": "nominal", "label": "版本"},
+          "tooltip": [
+            {"field": "version", "type": "nominal", "label": "版本"},
+            {"field": "metric", "type": "nominal", "label": "指标"},
+            {"field": "value", "type": "quantitative", "label": "数值"}
+          ]
+        }
+      },
+      {
+        "id": "saturation_comparison",
+        "title": "新旧版本同阶段残差饱和率",
+        "subtitle": "迭代 1500–1599 均值；新跟踪支路饱和上升，但合成输出仍低",
+        "type": "bar",
+        "dataset": "saturation_comparison",
+        "sourceId": "training_comparison",
+        "valueFormat": "percent",
+        "encodings": {
+          "x": {"field": "branch", "type": "nominal", "label": "输出"},
+          "y": {"field": "fraction", "type": "quantitative", "label": "饱和比例"},
+          "color": {"field": "version", "type": "nominal", "label": "版本"},
+          "tooltip": [
+            {"field": "version", "type": "nominal", "label": "版本"},
+            {"field": "fraction", "type": "quantitative", "label": "饱和比例", "format": "percent"}
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "health_table",
+        "title": "最近 100 轮训练健康指标",
+        "subtitle": "迭代 1500–1599 的算术平均；单轮 1599 仅作为补充",
+        "dataset": "health_metrics",
+        "sourceId": "training_new",
+        "defaultSort": {"field": "order", "direction": "asc"},
+        "columns": [
+          {"field": "metric", "label": "指标", "type": "text"},
+          {"field": "mean_last_100", "label": "最近 100 轮均值", "format": "number"},
+          {"field": "iteration_1599", "label": "第 1599 轮", "format": "number"},
+          {"field": "interpretation", "label": "解释", "type": "text"}
+        ]
+      },
+      {
+        "id": "checkpoint_table",
+        "title": "Checkpoint 完整性检查",
+        "subtitle": "截至 2026 年 8 月 31 日的本地文件与 PyTorch 读取结果",
+        "dataset": "checkpoint_health",
+        "sourceId": "checkpoints",
+        "defaultSort": {"field": "iteration", "direction": "desc"},
+        "columns": [
+          {"field": "iteration", "label": "迭代", "format": "number"},
+          {"field": "size_bytes", "label": "文件大小（bytes）", "format": "number"},
+          {"field": "load_status", "label": "PyTorch 读取", "type": "text"},
+          {"field": "meaning", "label": "结论", "type": "text"}
+        ]
+      }
+    ],
+    "sources": [
+      {"id": "training_new", "label": "DTERA selective gate 训练 JSONL", "path": "legged_gym/logs/g1_twist_dtera_selective_gate_v1/dtera_selective_gate_fixed_v1/train_metrics.jsonl"},
+      {"id": "training_old", "label": "DTERA revision4 训练 JSONL", "path": "legged_gym/logs/g1_twist_dtera_revision4/dtera_revision4_frozen_output_bias_overnight/train_metrics.jsonl"},
+      {"id": "training_comparison", "label": "新旧 DTERA 同阶段派生指标", "path": "reports/dtera_selective_iter1600_diagnosis_2026-08-31/derived_metrics.csv"},
+      {"id": "checkpoints", "label": "Selective gate checkpoints", "path": "legged_gym/logs/g1_twist_dtera_selective_gate_v1/dtera_selective_gate_fixed_v1"},
+      {"id": "targeted_tests", "label": "DTERA 与 AnyAdapter 目标测试", "path": "tests"}
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# DTERA Selective Gate：第 1600 轮阶段诊断"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "body": "## 结论：机制达到预期，性能提升仍未被证明\n\n**新版的核心修改已经生效。** 跟踪门不再是旧版近似恒定的缩放器：最近 100 轮中，约 **28.7%** 的样本门值低于 0.1，约 **18.3%** 高于 0.9；p10 约 **0.0012**、p90 为 **1.0**。WM→HistoryEncoder 梯度、两条残差支路梯度和 tracking encoder 的 PPO 梯度均稳定非零，没有 NaN、Inf 或 WM skip。\n\n**但现在还不能说仿真或实机效果优于原 TWIST。** 当前训练回报是随课程变化的 on-policy 指标，没有 `model_1550` 的固定 motion、固定起始帧、固定 DR 配对消融。新版最近 100 轮平均回报还比旧版同阶段低约 **2.2%**，但这个差异不能单独解释为性能退化。\n\n**最新的 `model_1600.pt` 已损坏。** 文件只有 14,065,664 bytes，PyTorch 报 `failed finding central directory`；最新可用 checkpoint 是完整的 `model_1550.pt`。"
+      },
+      {
+        "id": "checkpoint_finding",
+        "type": "markdown",
+        "sourceId": "checkpoints",
+        "body": "## 最新可用模型是 1550，而不是 1600\n\n`model_1550.pt` 可在 CPU 上完整读取，包含 **87** 个模型张量、约 **2.68M** 个状态元素，以及 PPO、WM、risk 三套优化器状态；所有模型张量均为有限值，checkpoint 内的迭代缓冲为 1550。`model_1600.pt` 在写入中被中断，不能用于恢复、导出或评估。"
+      },
+      {"id": "checkpoint_table_block", "type": "table", "tableId": "checkpoint_table"},
+      {
+        "id": "training_stability",
+        "type": "markdown",
+        "sourceId": "training_new",
+        "body": "## 训练没有发散，回报回落主要需要固定评估解释\n\n训练日志连续覆盖 0–1599 轮，全部 **1600** 行 JSON 有效，首尾均为 **149** 个字段，没有非有限数值。WM loss 从前 100 轮均值 **0.01597** 降到最近 100 轮 **0.01232**；最近 500 轮仍缓慢下降。训练回报最近 500 轮每 100 轮约下降 **0.54**，同时 motion difficulty 继续收紧，因此这个趋势只能说明需要固定场景评估，不能证明新版门控变差。"
+      },
+      {"id": "reward_chart_block", "type": "chart", "chartId": "reward_trend"},
+      {
+        "id": "selective_gate_finding",
+        "type": "markdown",
+        "sourceId": "training_comparison",
+        "body": "## 跟踪门已真正具备开关选择性\n\n旧版同阶段共享门的 p10/均值/p90 约为 **0.266/0.403/0.564**，低于 0.1 和高于 0.9 的比例几乎为零。新版跟踪门相应约为 **0.001/0.409/1.000**，并且约 **28.7%** 关闭、**18.3%** 全开。也就是说，修改完成了预期的“低误差关闭、高误差打开”，而不是简单改变平均门值。"
+      },
+      {"id": "gate_chart_block", "type": "chart", "chartId": "gate_selectivity"},
+      {
+        "id": "dynamics_gate_finding",
+        "type": "markdown",
+        "sourceId": "training_new",
+        "body": "## 动力学门仍然偏常开，这是当前最大的机制疑点\n\n最近 100 轮 dynamics demand 均值约 **0.868**，动力学门均值约 **0.434**，p10 约 **0.268**、p90 恒为 **0.5**。它能在合成站立样本上精确关闭，但在正常动作分布中大部分时间接近 0.5 上限。因此，新版解决了 tracking gate 的选择性，却还没有证明 dynamics branch 只在真正需要时介入。先用 `dyn_only` 配对消融验证；若其跨 seed 持续伤害回报或 root error，再提高 dynamics demand 阈值或降低 0.5 的 gate scale。"
+      },
+      {
+        "id": "residual_health",
+        "type": "markdown",
+        "sourceId": "training_comparison",
+        "body": "## 残差幅度健康，但新版并不比旧版更保守\n\n最近 100 轮 candidate L2 为 **0.1264**，applied L2 为 **0.0580**，约应用候选残差的 **45.9%**。与旧版同阶段相比，candidate L2 低 **6.9%**，但 applied L2 反而高 **5.3%**。tracking 支路饱和率从旧版约 **1.83%** 升到 **4.34%**，仍低于 10% 的监控线；合成 candidate 饱和率仅 **0.22%**。因此当前问题不是 0.03 上限太小，也不应直接放大残差。"
+      },
+      {"id": "saturation_chart_block", "type": "chart", "chartId": "saturation_comparison"},
+      {
+        "id": "auxiliary_health",
+        "type": "markdown",
+        "sourceId": "training_new",
+        "body": "## 辅助链路正常，confidence/risk 仍只能作诊断\n\n最近 100 轮 HistoryEncoder 的 WM 梯度均值约 **2.10e-3**；tracking encoder 的 PPO 梯度约 **1.36e-2**，两条支路梯度均非零。WM uncertainty 与实际误差相关系数约 **0.433**，高不确定组误差约 **0.970**，比低不确定组 **0.810** 高约 **19.7%**，排序方向正确。risk 正样本仅约 **0.36%**，且 candidate 相对 base 的平均风险增量只有约 **6.59e-4**；当前关闭 confidence/risk 对动作的控制是合理的。"
+      },
+      {"id": "health_table_block", "type": "table", "tableId": "health_table"},
+      {
+        "id": "test_validation",
+        "type": "markdown",
+        "sourceId": "targeted_tests",
+        "body": "## 目标测试通过，rollout 受当前机器无 NVIDIA 设备限制\n\nDTERA 测试 **30/30**、双支路诊断 **10/10**、WM→编码器梯度 **4/4**、部署 runtime **3/3**，合计 **47/47** 通过。CPU 冒烟 rollout 已尝试，但 Isaac Gym 的 tensor API 即使在 CPU PhysX 下仍要求 CUDA 设备；当前环境 `Device count 0`，因此未生成有效 rollout。这是评估环境限制，不是 checkpoint 加载或模型数值失败。"
+      },
+      {
+        "id": "scope_definitions",
+        "type": "markdown",
+        "body": "## 范围与判断口径\n\n“机制达到预期”指门控分布、梯度、loss、饱和率、checkpoint 状态和单元测试符合设计；“效果达到预期”指在同一 checkpoint、相同 motion/起始帧/DR、相同 seed 下，full 策略相对 `base_only` 在 episode return、跌倒率和 tracking error 上产生可重复净收益。本报告只确认前者，尚未确认后者。新旧日志比较使用相同迭代窗口 1500–1599，但训练配置不同，因此只用于判断修改方向，不能当作因果性能试验。"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 诊断方法\n\n逐行解析新版本 1600 条训练 JSONL，检查迭代连续性、字段完整性与数值有限性；按 100 轮及训练阶段聚合关键指标；用旧 revision4 的 1500–1599 轮作为同阶段机制对照；在 CPU 上读取两个最新 checkpoint 并核对模型/优化器状态；运行 4 组目标测试；最后尝试 8 环境、20 步的 CPU Isaac Gym rollout。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 限制与不确定性\n\n没有可用 CUDA 设备，因此没有完成 `model_1550` 的 fixed-scenario 仿真消融；训练回报受课程和 on-policy 分布变化影响；单轮第 1599 轮回报 57.45 高于最近 100 轮均值 53.16，说明单点波动明显；旧版对照并非随机对照实验。基于这些限制，不能宣称 sim-to-sim 或 sim-to-real 已提升。"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## 建议：先评估 1550，再决定是否续训或改门\n\n1. **不要使用 `model_1600.pt`。** 评估和恢复都使用 `model_1550.pt`。\n2. **先跑固定场景配对消融。** 至少比较 `base_only`、`dyn_only`、`err_only`、`full_demand_only`，DR 下用 seed 42/43/44；每个 mode 复用同一 scenario manifest。\n3. **通过条件。** `full_demand_only` 的平均 return 提升、跌倒率下降、root/keybody error 不恶化，并且三个 seed 方向一致；`dyn_only` 至少不能持续为负。\n4. **若 dyn_only 持续变差，才修改 dynamics gate。** 优先提高 `dynamics_demand_low/high` 或把 `dynamics_gate_scale` 从 0.5 降到 0.25–0.35，不改 0.03 残差上限。\n5. **若 err_only 改善但 full 变差，降低动力学门介入；若两支路都无增益，停止长训并回到 residual target/credit assignment 诊断。**\n6. **若 1550 已跨 seed 稳定优于 base，再从 1550 恢复训练到 3000–5000 轮复验。** 不建议在没有固定评估证据时直接跑到 30000。\n7. **修复 checkpoint 保存。** 后续将 `torch.save` 先写到同目录临时文件，成功后用 `os.replace` 原子替换正式文件，避免 Ctrl+C/掉电再次留下半个 checkpoint。"
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 下一轮评估要回答的问题\n\n- 选择性 tracking gate 是否把旧版 seed 43/44 的负收益消除？\n- dynamics branch 单独是否改善 root velocity/orientation，还是只增加动作扰动？\n- full 策略的收益是否集中在高 tracking demand 区间？\n- 1550、3000、5000 三个 checkpoint 中，固定场景指标何时开始稳定？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-31T00:00:00+08:00",
+    "status": "partial",
+    "datasets": {
+      "window_trends": [
+        {"window": "0-99", "mid_iteration": 49.5, "mean_reward": 32.489450, "episode_length": 540.089800, "wm_loss": 0.015971151, "applied_l2": 0.000020367, "motion_difficulty": 8.994366},
+        {"window": "100-199", "mid_iteration": 149.5, "mean_reward": 57.983405, "episode_length": 991.281100, "wm_loss": 0.014069651, "applied_l2": 0.004564895, "motion_difficulty": 8.986646},
+        {"window": "200-299", "mid_iteration": 249.5, "mean_reward": 55.626648, "episode_length": 942.801200, "wm_loss": 0.013421619, "applied_l2": 0.009569520, "motion_difficulty": 8.978293},
+        {"window": "300-399", "mid_iteration": 349.5, "mean_reward": 58.770829, "episode_length": 994.938500, "wm_loss": 0.013073385, "applied_l2": 0.016072820, "motion_difficulty": 8.970066},
+        {"window": "400-499", "mid_iteration": 449.5, "mean_reward": 56.327784, "episode_length": 961.830800, "wm_loss": 0.013235067, "applied_l2": 0.022869794, "motion_difficulty": 8.962107},
+        {"window": "500-599", "mid_iteration": 549.5, "mean_reward": 56.218029, "episode_length": 955.401100, "wm_loss": 0.013012864, "applied_l2": 0.026597204, "motion_difficulty": 8.954148},
+        {"window": "600-699", "mid_iteration": 649.5, "mean_reward": 55.897515, "episode_length": 948.327300, "wm_loss": 0.012724495, "applied_l2": 0.030869633, "motion_difficulty": 8.946291},
+        {"window": "700-799", "mid_iteration": 749.5, "mean_reward": 56.719380, "episode_length": 959.324500, "wm_loss": 0.012548400, "applied_l2": 0.037033964, "motion_difficulty": 8.938537},
+        {"window": "800-899", "mid_iteration": 849.5, "mean_reward": 55.586376, "episode_length": 939.933200, "wm_loss": 0.012549092, "applied_l2": 0.042956627, "motion_difficulty": 8.930806},
+        {"window": "900-999", "mid_iteration": 949.5, "mean_reward": 55.110130, "episode_length": 936.303400, "wm_loss": 0.012585673, "applied_l2": 0.052101154, "motion_difficulty": 8.923176},
+        {"window": "1000-1099", "mid_iteration": 1049.5, "mean_reward": 55.705837, "episode_length": 943.635200, "wm_loss": 0.012471744, "applied_l2": 0.059076454, "motion_difficulty": 8.915852},
+        {"window": "1100-1199", "mid_iteration": 1149.5, "mean_reward": 55.522105, "episode_length": 941.302500, "wm_loss": 0.012415188, "applied_l2": 0.059745866, "motion_difficulty": 8.908534},
+        {"window": "1200-1299", "mid_iteration": 1249.5, "mean_reward": 54.600912, "episode_length": 922.396500, "wm_loss": 0.012390230, "applied_l2": 0.057882391, "motion_difficulty": 8.901107},
+        {"window": "1300-1399", "mid_iteration": 1349.5, "mean_reward": 54.642138, "episode_length": 926.274300, "wm_loss": 0.012296142, "applied_l2": 0.058977550, "motion_difficulty": 8.893745},
+        {"window": "1400-1499", "mid_iteration": 1449.5, "mean_reward": 54.529484, "episode_length": 923.090700, "wm_loss": 0.012277924, "applied_l2": 0.061325964, "motion_difficulty": 8.886505},
+        {"window": "1500-1599", "mid_iteration": 1549.5, "mean_reward": 53.164768, "episode_length": 900.828900, "wm_loss": 0.012316402, "applied_l2": 0.058029214, "motion_difficulty": 8.879211}
+      ],
+      "gate_comparison": [
+        {"version": "旧版共享门", "metric": "p10", "value": 0.266115253},
+        {"version": "新版跟踪门", "metric": "p10", "value": 0.001155274},
+        {"version": "旧版共享门", "metric": "均值", "value": 0.402962655},
+        {"version": "新版跟踪门", "metric": "均值", "value": 0.409307557},
+        {"version": "旧版共享门", "metric": "p90", "value": 0.563724175},
+        {"version": "新版跟踪门", "metric": "p90", "value": 1.000000000},
+        {"version": "旧版共享门", "metric": "比例 <0.1", "value": 0.000007629},
+        {"version": "新版跟踪门", "metric": "比例 <0.1", "value": 0.286615306},
+        {"version": "旧版共享门", "metric": "比例 >0.9", "value": 0.001190694},
+        {"version": "新版跟踪门", "metric": "比例 >0.9", "value": 0.182922877}
+      ],
+      "saturation_comparison": [
+        {"version": "旧版同阶段", "branch": "动力学支路", "fraction": 0.012178091},
+        {"version": "新版同阶段", "branch": "动力学支路", "fraction": 0.007418164},
+        {"version": "旧版同阶段", "branch": "跟踪支路", "fraction": 0.018287335},
+        {"version": "新版同阶段", "branch": "跟踪支路", "fraction": 0.043414545},
+        {"version": "旧版同阶段", "branch": "候选合成输出", "fraction": 0.002657841},
+        {"version": "新版同阶段", "branch": "候选合成输出", "fraction": 0.002224555}
+      ],
+      "health_metrics": [
+        {"order": 1, "metric": "World Model loss", "mean_last_100": 0.012316402, "iteration_1599": 0.012146711, "interpretation": "稳定，无 skip"},
+        {"order": 2, "metric": "HistoryEncoder WM grad", "mean_last_100": 0.002097431, "iteration_1599": 0.002007994, "interpretation": "WM→HistoryEncoder 链路正常"},
+        {"order": 3, "metric": "Tracking encoder PPO grad", "mean_last_100": 0.013637429, "iteration_1599": 0.014023690, "interpretation": "跟踪 latent 接收 PPO 梯度"},
+        {"order": 4, "metric": "Candidate residual L2", "mean_last_100": 0.126401503, "iteration_1599": 0.126387326, "interpretation": "候选残差稳定"},
+        {"order": 5, "metric": "Applied residual L2", "mean_last_100": 0.058029214, "iteration_1599": 0.058301554, "interpretation": "不是过小残差"},
+        {"order": 6, "metric": "Dynamics gate mean", "mean_last_100": 0.434067933, "iteration_1599": 0.434832186, "interpretation": "正常动作下偏常开"},
+        {"order": 7, "metric": "Tracking gate mean", "mean_last_100": 0.409307557, "iteration_1599": 0.413606517, "interpretation": "均值与旧版接近，但分布已选择化"},
+        {"order": 8, "metric": "Tracking gate <0.1 fraction", "mean_last_100": 0.286615306, "iteration_1599": 0.283233650, "interpretation": "约 29% 样本关闭"},
+        {"order": 9, "metric": "Tracking gate >0.9 fraction", "mean_last_100": 0.182922877, "iteration_1599": 0.187642422, "interpretation": "约 18% 样本全开"},
+        {"order": 10, "metric": "Tracking branch saturation", "mean_last_100": 0.043414545, "iteration_1599": 0.034679999, "interpretation": "需监控但未失控"},
+        {"order": 11, "metric": "Candidate saturation", "mean_last_100": 0.002224555, "iteration_1599": 0.002398859, "interpretation": "整体合成输出健康"},
+        {"order": 12, "metric": "WM uncertainty/error corr", "mean_last_100": 0.433209556, "iteration_1599": 0.417716433, "interpretation": "中等排序能力"},
+        {"order": 13, "metric": "Branch cosine", "mean_last_100": 0.246786938, "iteration_1599": 0.216593274, "interpretation": "两支路已分化"},
+        {"order": 14, "metric": "Branch balance", "mean_last_100": 0.780493539, "iteration_1599": 0.782281128, "interpretation": "两支路均有贡献"}
+      ],
+      "checkpoint_health": [
+        {"iteration": 1600, "size_bytes": 14065664, "load_status": "失败：failed finding central directory", "meaning": "保存中断，文件截断，不可使用"},
+        {"iteration": 1550, "size_bytes": 23386460, "load_status": "成功", "meaning": "最新可用 checkpoint；模型和优化器状态完整"}
+      ]
+    },
+    "accessIssues": [
+      {"id": "fixed_rollout_pending", "dataset": "model_1550_fixed_scenario_ablation", "message": "当前运行环境没有可见 NVIDIA 设备；Isaac Gym tensor API 无法完成 CPU-only rollout，因此尚无新 checkpoint 的固定场景消融结果。"},
+      {"id": "model_1600_corrupt", "dataset": "checkpoint_health", "message": "model_1600.pt 保存过程中被中断，PyTorch 归档不完整。"}
+    ]
+  },
+  "sources": [
+    {"id": "training_new", "label": "DTERA selective gate 训练 JSONL", "path": "legged_gym/logs/g1_twist_dtera_selective_gate_v1/dtera_selective_gate_fixed_v1/train_metrics.jsonl"},
+    {"id": "training_old", "label": "DTERA revision4 训练 JSONL", "path": "legged_gym/logs/g1_twist_dtera_revision4/dtera_revision4_frozen_output_bias_overnight/train_metrics.jsonl"},
+    {"id": "training_comparison", "label": "新旧 DTERA 同阶段派生指标", "path": "reports/dtera_selective_iter1600_diagnosis_2026-08-31/derived_metrics.csv"},
+    {"id": "checkpoints", "label": "Selective gate checkpoints", "path": "legged_gym/logs/g1_twist_dtera_selective_gate_v1/dtera_selective_gate_fixed_v1"},
+    {"id": "targeted_tests", "label": "DTERA 与 AnyAdapter 目标测试", "path": "tests"}
+  ]
+}

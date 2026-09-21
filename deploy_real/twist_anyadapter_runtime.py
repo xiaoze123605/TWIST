@@ -30,6 +30,10 @@ class AnyAdapterRuntimeConfig:
     adapter_input_is_augmented: bool = True
     adapter_context_dim: int = 0
     fill_history_on_first_observation: bool = False
+    # OpenTrack 7001-D policies are trained with completed (s_t, a_t) pairs:
+    # observation_t consumes history through t-1, then the executed action_t is
+    # committed with the state cached from observation_t for observation_t+1.
+    commit_history_after_action: bool = False
     tracking_error_history_len: int = 0
     tracking_ref_dof_vel_filter_alpha: float = 0.5
     tracking_ref_dof_vel_clip: float = 20.0
@@ -90,6 +94,7 @@ class AnyAdapterRuntime:
         self._ema_action: Optional[np.ndarray] = None
         self._ema_alpha = float(cfg.action_ema_alpha)
         self._history_initialized = False
+        self._pending_dyn_state: Optional[np.ndarray] = None
         with torch.no_grad():
             probe = self.policy(
                 torch.zeros(1, self.policy_obs_dim, device=self.device)
@@ -110,6 +115,7 @@ class AnyAdapterRuntime:
         self.prev_action[:] = 0.0
         self._ema_action = None
         self._history_initialized = False
+        self._pending_dyn_state = None
 
     @staticmethod
     def _wrap_to_pi(angle: np.ndarray) -> np.ndarray:
@@ -216,13 +222,22 @@ class AnyAdapterRuntime:
                 f"got {base_obs.shape[0]}."
             )
         dyn_state = base_obs[self.state_indices].astype(np.float32)
-        new_frame = np.concatenate([dyn_state, self.prev_action], axis=0)
-        if self.cfg.fill_history_on_first_observation and not self._history_initialized:
-            self.history[:] = new_frame
+        if self.cfg.commit_history_after_action:
+            # Do not expose s_t before a_t exists. Cache it and commit the
+            # complete pair only after policy inference below.
+            self._pending_dyn_state = dyn_state.copy()
+            if self.cfg.fill_history_on_first_observation and not self._history_initialized:
+                initial_frame = np.concatenate([dyn_state, self.prev_action], axis=0)
+                self.history[:] = initial_frame
+                self._history_initialized = True
         else:
-            self.history[:-1] = self.history[1:]
-            self.history[-1] = new_frame
-        self._history_initialized = True
+            new_frame = np.concatenate([dyn_state, self.prev_action], axis=0)
+            if self.cfg.fill_history_on_first_observation and not self._history_initialized:
+                self.history[:] = new_frame
+            else:
+                self.history[:-1] = self.history[1:]
+                self.history[-1] = new_frame
+            self._history_initialized = True
         if self.cfg.tracking_error_history_len > 0:
             tracking_inputs = (
                 tracking_reference,
@@ -304,6 +319,17 @@ class AnyAdapterRuntime:
                     self._ema_alpha * self._ema_action + (1.0 - self._ema_alpha) * action
                 )
             action = self._ema_action.copy()
+
+        if self.cfg.commit_history_after_action:
+            if self._pending_dyn_state is None:
+                raise RuntimeError("missing pre-action dynamics state")
+            completed_frame = np.concatenate(
+                [self._pending_dyn_state, action], axis=0
+            )
+            self.history[:-1] = self.history[1:]
+            self.history[-1] = completed_frame
+            self._history_initialized = True
+            self._pending_dyn_state = None
 
         self.prev_action = action.copy()
         return action

@@ -15,6 +15,9 @@ from mujoco.viewer import launch_passive
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
+# Use the same validated quaternion/motion loader as the training checkout,
+# not an editable pose install from a different TWIST tree.
+sys.path.insert(0, os.path.join(REPO_ROOT, 'pose'))
 # ---------------------------------------------------------------------
 # Example imports: adapt to your actual file structure
 # ---------------------------------------------------------------------
@@ -24,11 +27,9 @@ from data_utils.rot_utils import euler_from_quaternion, quat_rotate_inverse, qua
 from data_utils.params import DEFAULT_MIMIC_OBS, DEFAULT_ACTION_HAND
 from motion_world_model.runtime import (
     MotionReferenceRefiner,
-    RuntimeReferenceCorruptor,
     reinsert_wrist_roll,
     remove_wrist_roll,
     resolve_checkpoint_path,
-    wrap_reference_yaw,
 )
 
 
@@ -121,26 +122,21 @@ def build_mimic_obs(
             root_vel.detach().cpu().numpy().squeeze(), root_ang_vel.detach().cpu().numpy().squeeze()
 
 
-def process_mimic_reference(mimic_obs, reference_mode, corruptor=None, refiner=None, trace=None):
-    """Apply the demo pipeline while leaving the two wrist-roll values untouched."""
+def process_mimic_reference(mimic_obs, reference_mode, refiner=None, trace=None):
+    """Optionally denoise the input reference without adding synthetic corruption."""
     reference_31d, wrists = remove_wrist_roll(mimic_obs)
-    corrupted = reference_31d.copy()
-    if reference_mode == "clean":
+    if reference_mode == "raw":
         processed = reference_31d
+    elif reference_mode == "wm":
+        if refiner is None:
+            raise ValueError("wm mode requires a MotionReferenceRefiner")
+        processed = refiner.refine(reference_31d)
     else:
-        if corruptor is None:
-            raise ValueError(f"{reference_mode} mode requires a corruptor")
-        corrupted = corruptor.corrupt(reference_31d)
-        if reference_mode == "corrupt":
-            processed = wrap_reference_yaw(corrupted)
-        elif reference_mode == "wm":
-            if refiner is None:
-                raise ValueError("wm mode requires a MotionReferenceRefiner")
-            processed = refiner.refine(corrupted)
-        else:
-            raise ValueError(f"unknown reference mode: {reference_mode}")
+        raise ValueError(f"unknown reference mode: {reference_mode}")
     if trace is not None:
-        trace.update(clean=reference_31d.tolist(), corrupt=wrap_reference_yaw(corrupted).tolist(),
+        # ``clean`` is retained as a legacy metrics key. It is the unmodified
+        # reference supplied by the PKL, not an artificially constructed target.
+        trace.update(raw=reference_31d.tolist(), clean=reference_31d.tolist(), corrupt=None,
                      wm=processed.tolist() if reference_mode == "wm" else None)
     return reinsert_wrist_roll(processed, wrists)
 
@@ -195,19 +191,14 @@ def main(args, xml_file, robot_base):
     print(f"[Motion Server] Torch device: {device}")
     motion_lib = MotionLib(args.motion_file, device=device)
 
-    corruptor = None
     refiner = None
-    if args.reference_mode != "clean":
-        corruptor = RuntimeReferenceCorruptor.from_preset(
-            args.corruption_preset, seed=args.seed
-        )
     if args.reference_mode == "wm":
         checkpoint_path = resolve_checkpoint_path(args.wm_checkpoint)
         refiner = MotionReferenceRefiner(checkpoint_path, device=device)
         print(f"[Motion Server] Motion-WM checkpoint: {checkpoint_path}")
     print(
         f"[Motion Server] Reference mode: {args.reference_mode}; "
-        f"corruption={args.corruption_preset}; seed={args.seed}"
+        f"artificial_corruption=disabled; seed={args.seed}"
     )
 
     initial_motion_id = torch.zeros(1, dtype=torch.long, device=device)
@@ -320,7 +311,6 @@ def main(args, xml_file, robot_base):
                 mimic_obs = process_mimic_reference(
                     mimic_obs,
                     args.reference_mode,
-                    corruptor=corruptor,
                     refiner=refiner,
                     trace=reference_trace,
                 )
@@ -454,22 +444,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--reference-mode",
-        choices=("clean", "corrupt", "wm"),
-        default="clean",
-        help="Reference path used by the frozen TWIST policy.",
+        choices=("raw", "wm"),
+        default="raw",
+        help="raw passes the supplied reference through; wm denoises that same reference.",
     )
     parser.add_argument(
         "--wm-checkpoint",
         default=None,
         help="Motion-WM best.pt. Defaults to full_stable_v2, then another existing best.pt.",
     )
-    parser.add_argument(
-        "--corruption-preset",
-        choices=("formal", "demo_stress"),
-        default="formal",
-        help="formal matches training; demo_stress is visualization-only.",
-    )
-    parser.add_argument("--seed", type=int, default=42, help="Deterministic corruption seed.")
+    parser.add_argument("--seed", type=int, default=42, help="Deterministic runtime seed.")
     parser.add_argument(
         "--wait-for-sim-ready",
         action="store_true",

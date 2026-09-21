@@ -26,6 +26,8 @@ class PPOAny2Track(PPOAnyAdapter):
         world_model_sequence_length: int = 20,
         world_model_num_epochs: int = 1,
         world_model_component_weights=(5.0, 5.0, 1.0, 0.5),
+        action_std_min: float = 0.0,
+        action_std_max: float = float("inf"),
         **kwargs,
     ):
         kwargs["joint_encoder_optimization"] = False
@@ -35,6 +37,14 @@ class PPOAny2Track(PPOAnyAdapter):
         super().__init__(*args, **kwargs)
         self.world_model_sequence_length = int(world_model_sequence_length)
         self.world_model_num_epochs = int(world_model_num_epochs)
+        self.policy_learning_rate = float(policy_learning_rate)
+        self.world_model_learning_rate = float(world_model_learning_rate)
+        self.action_std_min = float(action_std_min)
+        self.action_std_max = float(action_std_max)
+        if self.action_std_min < 0.0:
+            raise ValueError("action_std_min must be non-negative")
+        if self.action_std_max < self.action_std_min:
+            raise ValueError("action_std_max must be >= action_std_min")
         if len(world_model_component_weights) != 4:
             raise ValueError("world_model_component_weights must contain four values")
         self.world_model_component_weights = {
@@ -54,6 +64,27 @@ class PPOAny2Track(PPOAnyAdapter):
             lr=float(world_model_learning_rate),
         )
         self.optimizer = self.ppo_optimizer
+
+    def _clamp_action_std(self):
+        std = getattr(self.actor_critic, "std", None)
+        if std is None:
+            return
+        with torch.no_grad():
+            std.clamp_(min=self.action_std_min, max=self.action_std_max)
+
+    def on_optimizer_state_loaded(self):
+        """Apply continuation hyperparameters after restoring Adam moments.
+
+        Optimizer.load_state_dict restores the checkpoint's old learning rate.
+        Keep its moment estimates, but use the current continuation config.
+        """
+        for group in self.ppo_optimizer.param_groups:
+            group["lr"] = self.policy_learning_rate
+        for group in self.wm_optimizer.param_groups:
+            group["lr"] = self.world_model_learning_rate
+            group["weight_decay"] = 0.0
+        self.learning_rate = self.policy_learning_rate
+        self._clamp_action_std()
 
     def _autoregressive_world_model_loss(
         self,
@@ -333,6 +364,7 @@ class PPOAny2Track(PPOAnyAdapter):
             adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
             nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
             self.ppo_optimizer.step()
+            self._clamp_action_std()
 
             mean_value_loss += float(value_loss.detach().cpu())
             mean_surrogate_loss += float(surrogate_loss.detach().cpu())

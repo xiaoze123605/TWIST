@@ -118,6 +118,11 @@ class HumanoidChar(LeggedRobot):
         self.total_env_steps_counter += 1
         clip_actions = self.cfg.normalization.clip_actions / self.cfg.control.action_scale
         self.actions = torch.clip(action_tensor, -clip_actions, clip_actions).to(self.device)
+        # AnyAdapter pairs the pre-step state cached while producing the
+        # current policy observation with this exact delayed/clipped 23-D
+        # action. Commit before physics advances the robot to the next state.
+        if hasattr(self, "_commit_anyadapter_transition"):
+            self._commit_anyadapter_transition(self.actions)
         self.render()
 
         for _ in range(self.cfg.control.decimation):

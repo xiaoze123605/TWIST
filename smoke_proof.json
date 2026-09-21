@@ -1,0 +1,296 @@
+{
+  "checks": {
+    "adapter_changed": {
+      "detail": "0 -> 0.10324248",
+      "pass": true
+    },
+    "adapter_grad_positive": {
+      "detail": "[45.9197889553383, 151.4946934700012, 187.12650680541992, 155.37458057403563, 177.58934650421142]",
+      "pass": true
+    },
+    "all_finite": {
+      "detail": "obs/loss/action telemetry",
+      "pass": true
+    },
+    "dependency_before_identity": {
+      "detail": "{'embedding_difference_l2': 0.8538138270378113, 'action_difference_l2': 0.0, 'action_a_base_max_abs': 0.0, 'action_b_base_max_abs': 0.0}",
+      "pass": true
+    },
+    "dynamics_wm_changed": {
+      "detail": "25.5140492 -> 25.5453568",
+      "pass": true
+    },
+    "dynamics_wm_grad_positive": {
+      "detail": "[1.0000000171311585, 0.999999991643849, 0.9999996505808614, 0.9999999193725848, 0.9999999132642606]",
+      "pass": true
+    },
+    "frozen_modules_no_grad": {
+      "detail": "TWIST and Motion-WM",
+      "pass": true
+    },
+    "history_affects_embedding_and_action": {
+      "detail": "{'embedding_difference_l2': 0.8596292734146118, 'action_difference_l2': 0.0010465114610269666, 'action_a_base_max_abs': 0.22807466983795166, 'action_b_base_max_abs': 0.22794580459594727}",
+      "pass": true
+    },
+    "history_encoder_changed": {
+      "detail": "9.2570257 -> 9.26403429",
+      "pass": true
+    },
+    "history_encoder_ppo_grad_zero": {
+      "detail": "[0.0, 0.0, 0.0, 0.0, 0.0]",
+      "pass": true
+    },
+    "history_encoder_wm_grad_positive": {
+      "detail": "[0.00026633263733733507, 0.0003760375805857886, 0.0008474069250696899, 0.000299437769794284, 0.0004440220146074781]",
+      "pass": true
+    },
+    "history_timing": {
+      "detail": "{'pass': True, 'chronological_past_only': True, 'all_state_indices_exact': True, 'all_action_indices_exact': True, 'all_state_action_indices_aligned': True, 'current_state_leakage': False, 'reset_no_leakage': True, 'observed_state_first_last': [3.0, 81.0], 'observed_action_first_last': [3.0, 81.0], 'expected_state_first_last': [3.0, 81.0], 'expected_action_first_last': [3.0, 81.0]}",
+      "pass": true
+    },
+    "jit_runtime": {
+      "detail": "{'path': '/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/g1_motion_wm_anyadapter/smoke_seed42/traced/anyadapter-opentrack-smoke-jit.pt', 'max_abs_error': 0.0, 'contains_history_encoder': True, 'contains_layerwise_actor': True, 'contains_dynamics_world_model': False, 'contains_critic': False, 'contains_motion_wm': False, 'detected_observation_dim': 7001, 'simulator_message': '[AnyAdapter-OpenTrack] Detected 7001-D layerwise AnyAdapter policy'}",
+      "pass": true
+    },
+    "motion_wm_hash_unchanged": {
+      "detail": "40c92737a6693050f17d136a31deedb202e4e940da328bbb07ef2885bc25feb6 -> 40c92737a6693050f17d136a31deedb202e4e940da328bbb07ef2885bc25feb6",
+      "pass": true
+    },
+    "observation_dim_7001": {
+      "detail": "[[96, 7001], [96, 7001], [96, 7001], [96, 7001], [96, 7001]]",
+      "pass": true
+    },
+    "reference_pipeline": {
+      "detail": "{'corrupt': {'policy_reference_equals_processed': True, 'clean_ref_recorded': True, 'corrupt_ref_recorded': True, 'reward_target_unchanged': True, 'motion_wm_requires_grad': False, 'motion_wm_has_grad': False}, 'wm': {'policy_reference_equals_processed': True, 'clean_ref_recorded': True, 'corrupt_ref_recorded': True, 'reward_target_unchanged': True, 'motion_wm_requires_grad': False, 'motion_wm_has_grad': False}}",
+      "pass": true
+    },
+    "twist_hash_unchanged": {
+      "detail": "45005a8e66097fc45b1b11a3b9d94ef3c5b17f61060b2ae5d9fcd468ccc4e0ef -> 45005a8e66097fc45b1b11a3b9d94ef3c5b17f61060b2ae5d9fcd468ccc4e0ef",
+      "pass": true
+    }
+  },
+  "dependency": {
+    "after": {
+      "action_a_base_max_abs": 0.22807466983795166,
+      "action_b_base_max_abs": 0.22794580459594727,
+      "action_difference_l2": 0.0010465114610269666,
+      "embedding_difference_l2": 0.8596292734146118
+    },
+    "before": {
+      "action_a_base_max_abs": 0.0,
+      "action_b_base_max_abs": 0.0,
+      "action_difference_l2": 0.0,
+      "embedding_difference_l2": 0.8538138270378113
+    }
+  },
+  "final": {
+    "adapter_norm": 0.10324248008788742,
+    "dynamics_wm_norm": 25.545356775878396,
+    "history_encoder_norm": 9.264034285755047,
+    "motion_wm_hash": "40c92737a6693050f17d136a31deedb202e4e940da328bbb07ef2885bc25feb6",
+    "twist_hash": "45005a8e66097fc45b1b11a3b9d94ef3c5b17f61060b2ae5d9fcd468ccc4e0ef"
+  },
+  "history_timing": {
+    "all_action_indices_exact": true,
+    "all_state_action_indices_aligned": true,
+    "all_state_indices_exact": true,
+    "chronological_past_only": true,
+    "current_state_leakage": false,
+    "expected_action_first_last": [
+      3.0,
+      81.0
+    ],
+    "expected_state_first_last": [
+      3.0,
+      81.0
+    ],
+    "observed_action_first_last": [
+      3.0,
+      81.0
+    ],
+    "observed_state_first_last": [
+      3.0,
+      81.0
+    ],
+    "pass": true,
+    "reset_no_leakage": true
+  },
+  "initial": {
+    "adapter_norm": 0.0,
+    "dynamics_wm_norm": 25.514049181826238,
+    "history_encoder_norm": 9.257025696517308,
+    "motion_wm_hash": "40c92737a6693050f17d136a31deedb202e4e940da328bbb07ef2885bc25feb6",
+    "twist_hash": "45005a8e66097fc45b1b11a3b9d94ef3c5b17f61060b2ae5d9fcd468ccc4e0ef"
+  },
+  "iterations": 5,
+  "jit": {
+    "contains_critic": false,
+    "contains_dynamics_world_model": false,
+    "contains_history_encoder": true,
+    "contains_layerwise_actor": true,
+    "contains_motion_wm": false,
+    "detected_observation_dim": 7001,
+    "max_abs_error": 0.0,
+    "path": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/g1_motion_wm_anyadapter/smoke_seed42/traced/anyadapter-opentrack-smoke-jit.pt",
+    "simulator_message": "[AnyAdapter-OpenTrack] Detected 7001-D layerwise AnyAdapter policy"
+  },
+  "num_envs": 4,
+  "overall_pass": true,
+  "reference_pipeline": {
+    "corrupt": {
+      "clean_ref_recorded": true,
+      "corrupt_ref_recorded": true,
+      "motion_wm_has_grad": false,
+      "motion_wm_requires_grad": false,
+      "policy_reference_equals_processed": true,
+      "reward_target_unchanged": true
+    },
+    "wm": {
+      "clean_ref_recorded": true,
+      "corrupt_ref_recorded": true,
+      "motion_wm_has_grad": false,
+      "motion_wm_requires_grad": false,
+      "policy_reference_equals_processed": true,
+      "reward_target_unchanged": true
+    }
+  },
+  "seed": 42,
+  "task": "g1_motion_wm_anyadapter",
+  "updates": [
+    {
+      "action_max": 3.005718469619751,
+      "action_min": -3.3425021171569824,
+      "adapter_grad_norm": 45.9197889553383,
+      "adapter_weight_norm": 0.08907158652966786,
+      "dynamics_wm_grad_norm": 1.0000000171311585,
+      "finite": true,
+      "history_embedding_l2": 0.3931756913661957,
+      "history_embedding_mean": 0.0004832979175262153,
+      "history_embedding_std": 0.03475366160273552,
+      "history_encoder_ppo_grad_norm": 0.0,
+      "history_encoder_wm_grad_norm": 0.00026633263733733507,
+      "max_abs_adapted_minus_base": 0.3513067960739136,
+      "mean_abs_adapted_minus_base": 0.045781854540109634,
+      "motion_wm_has_grad": false,
+      "observation_shape": [
+        96,
+        7001
+      ],
+      "twist_base_has_grad": false,
+      "update": 1,
+      "wm_dof_pos_l1": 1.20551335811615,
+      "wm_dof_vel_l1": 0.4131181761622429,
+      "wm_gyro_l1": 0.5549619570374489,
+      "wm_loss": 5.707610130310059,
+      "wm_orientation_l1": 0.30414559692144394
+    },
+    {
+      "action_max": 3.742361307144165,
+      "action_min": -2.583156108856201,
+      "adapter_grad_norm": 151.4946934700012,
+      "adapter_weight_norm": 0.09307389840457031,
+      "dynamics_wm_grad_norm": 0.999999991643849,
+      "finite": true,
+      "history_embedding_l2": 0.41894015669822693,
+      "history_embedding_mean": 0.00014090663171373308,
+      "history_embedding_std": 0.03705587983131409,
+      "history_encoder_ppo_grad_norm": 0.0,
+      "history_encoder_wm_grad_norm": 0.0003760375805857886,
+      "max_abs_adapted_minus_base": 0.3105314373970032,
+      "mean_abs_adapted_minus_base": 0.03759729117155075,
+      "motion_wm_has_grad": false,
+      "observation_shape": [
+        96,
+        7001
+      ],
+      "twist_base_has_grad": false,
+      "update": 2,
+      "wm_dof_pos_l1": 1.0782033205032349,
+      "wm_dof_vel_l1": 0.37583601474761963,
+      "wm_gyro_l1": 0.5817119777202606,
+      "wm_loss": 4.941298007965088,
+      "wm_orientation_l1": 0.15332337841391563
+    },
+    {
+      "action_max": 4.235774993896484,
+      "action_min": -3.3829922676086426,
+      "adapter_grad_norm": 187.12650680541992,
+      "adapter_weight_norm": 0.0966332853606672,
+      "dynamics_wm_grad_norm": 0.9999996505808614,
+      "finite": true,
+      "history_embedding_l2": 0.4505351483821869,
+      "history_embedding_mean": 0.00031874034903012216,
+      "history_embedding_std": 0.039889149367809296,
+      "history_encoder_ppo_grad_norm": 0.0,
+      "history_encoder_wm_grad_norm": 0.0008474069250696899,
+      "max_abs_adapted_minus_base": 0.217523455619812,
+      "mean_abs_adapted_minus_base": 0.02968386746942997,
+      "motion_wm_has_grad": false,
+      "observation_shape": [
+        96,
+        7001
+      ],
+      "twist_base_has_grad": false,
+      "update": 3,
+      "wm_dof_pos_l1": 1.1039285361766815,
+      "wm_dof_vel_l1": 0.37416972219944,
+      "wm_gyro_l1": 0.4916266053915024,
+      "wm_loss": 4.542367577552795,
+      "wm_orientation_l1": 0.15864421799778938
+    },
+    {
+      "action_max": 3.91390323638916,
+      "action_min": -3.090981960296631,
+      "adapter_grad_norm": 155.37458057403563,
+      "adapter_weight_norm": 0.10024615406606173,
+      "dynamics_wm_grad_norm": 0.9999999193725848,
+      "finite": true,
+      "history_embedding_l2": 0.4907204508781433,
+      "history_embedding_mean": -0.0007168941665440798,
+      "history_embedding_std": 0.043628495186567307,
+      "history_encoder_ppo_grad_norm": 0.0,
+      "history_encoder_wm_grad_norm": 0.000299437769794284,
+      "max_abs_adapted_minus_base": 0.36268794536590576,
+      "mean_abs_adapted_minus_base": 0.043891921639442444,
+      "motion_wm_has_grad": false,
+      "observation_shape": [
+        96,
+        7001
+      ],
+      "twist_base_has_grad": false,
+      "update": 4,
+      "wm_dof_pos_l1": 1.0146721452474594,
+      "wm_dof_vel_l1": 0.3523256704211235,
+      "wm_gyro_l1": 0.4324806183576584,
+      "wm_loss": 3.766058921813965,
+      "wm_orientation_l1": 0.08256415650248528
+    },
+    {
+      "action_max": 3.721498727798462,
+      "action_min": -3.2180521488189697,
+      "adapter_grad_norm": 177.58934650421142,
+      "adapter_weight_norm": 0.10324248008788742,
+      "dynamics_wm_grad_norm": 0.9999999132642606,
+      "finite": true,
+      "history_embedding_l2": 0.5438809990882874,
+      "history_embedding_mean": -0.0015756412176415324,
+      "history_embedding_std": 0.04896650090813637,
+      "history_encoder_ppo_grad_norm": 0.0,
+      "history_encoder_wm_grad_norm": 0.0004440220146074781,
+      "max_abs_adapted_minus_base": 0.25177139043807983,
+      "mean_abs_adapted_minus_base": 0.031849347054958344,
+      "motion_wm_has_grad": false,
+      "observation_shape": [
+        96,
+        7001
+      ],
+      "twist_base_has_grad": false,
+      "update": 5,
+      "wm_dof_pos_l1": 0.9960609674453735,
+      "wm_dof_vel_l1": 0.3425608277320862,
+      "wm_gyro_l1": 0.36493542045354843,
+      "wm_loss": 3.4372439980506897,
+      "wm_orientation_l1": 0.08904510829597712
+    }
+  ]
+}

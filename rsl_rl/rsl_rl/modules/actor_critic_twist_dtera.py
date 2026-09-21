@@ -190,6 +190,15 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         dynamics_gate_scale: float = 1.0,
         tracking_gate_scale: float = 1.0,
         dynamics_confidence_gate_strength: float = 0.0,
+        use_predicted_improvement_gate: bool = False,
+        predicted_improvement_mode: str = "threshold",
+        predicted_improvement_low: float = 0.0,
+        predicted_improvement_high: float = 0.02,
+        feedback_residual_scales: Sequence[float] = (0.0, 0.25, 0.5, 0.75, 1.0),
+        feedback_temperature: float = 0.01,
+        predicted_improvement_gate_start_iteration: int = 0,
+        predicted_improvement_gate_ramp_iterations: int = 0,
+        residual_joint_scales: Optional[Sequence[float]] = None,
         residual_warmup_iterations: int = 1000,
         freeze_residual_output_bias: bool = True,
         wm_variance_ema_decay: float = 0.99,
@@ -242,6 +251,17 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         self.dynamics_confidence_gate_strength = float(
             dynamics_confidence_gate_strength
         )
+        self.use_predicted_improvement_gate = bool(use_predicted_improvement_gate)
+        self.predicted_improvement_mode = str(predicted_improvement_mode)
+        self.predicted_improvement_low = float(predicted_improvement_low)
+        self.predicted_improvement_high = float(predicted_improvement_high)
+        self.feedback_temperature = float(feedback_temperature)
+        self.predicted_improvement_gate_start_iteration = int(
+            predicted_improvement_gate_start_iteration
+        )
+        self.predicted_improvement_gate_ramp_iterations = int(
+            predicted_improvement_gate_ramp_iterations
+        )
         self.residual_warmup_iterations = int(residual_warmup_iterations)
         self.freeze_residual_output_bias = bool(freeze_residual_output_bias)
         self.wm_variance_ema_decay = float(wm_variance_ema_decay)
@@ -275,6 +295,32 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
                 raise ValueError(f"{name} must be in [0, 1]")
         if self.residual_warmup_iterations < 0:
             raise ValueError("residual_warmup_iterations must be non-negative")
+        if not 0.0 <= self.predicted_improvement_low < self.predicted_improvement_high:
+            raise ValueError(
+                "predicted improvement thresholds require 0 <= low < high"
+            )
+        if self.predicted_improvement_mode not in ("threshold", "feedback_line_search"):
+            raise ValueError(
+                f"unsupported predicted_improvement_mode: {self.predicted_improvement_mode}"
+            )
+        if self.feedback_temperature <= 0.0:
+            raise ValueError("feedback_temperature must be positive")
+        if (
+            len(feedback_residual_scales) < 2
+            or any(not 0.0 <= float(value) <= 1.0 for value in feedback_residual_scales)
+            or any(
+                float(feedback_residual_scales[index])
+                >= float(feedback_residual_scales[index + 1])
+                for index in range(len(feedback_residual_scales) - 1)
+            )
+        ):
+            raise ValueError(
+                "feedback_residual_scales must be a strictly increasing sequence in [0, 1]"
+            )
+        if self.predicted_improvement_gate_start_iteration < 0:
+            raise ValueError("predicted improvement gate start must be non-negative")
+        if self.predicted_improvement_gate_ramp_iterations < 0:
+            raise ValueError("predicted improvement gate ramp must be non-negative")
         if self.adapter_branch_mode not in ("base_only", "dyn_only", "err_only", "full"):
             raise ValueError(f"unsupported adapter_branch_mode: {self.adapter_branch_mode}")
         if len(tracking_error_scales) != 5 or any(float(x) <= 0 for x in tracking_error_scales):
@@ -348,6 +394,28 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         self.register_buffer(
             "tracking_error_scale",
             torch.as_tensor(expanded_scales, dtype=torch.float32),
+        )
+        if residual_joint_scales is None:
+            residual_joint_scales = [1.0] * self.num_actions
+        if len(residual_joint_scales) != self.num_actions:
+            raise ValueError(
+                f"residual_joint_scales needs {self.num_actions} entries, "
+                f"got {len(residual_joint_scales)}"
+            )
+        if any(not 0.0 <= float(value) <= 1.0 for value in residual_joint_scales):
+            raise ValueError("residual_joint_scales entries must be in [0, 1]")
+        # This is an inference contract rather than a learned tensor. Keeping
+        # it non-persistent preserves strict compatibility with older DTERA
+        # checkpoints while .to(device) and TorchScript still handle it.
+        self.register_buffer(
+            "residual_joint_scale",
+            torch.as_tensor(residual_joint_scales, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "feedback_residual_scale_candidates",
+            torch.as_tensor(feedback_residual_scales, dtype=torch.float32),
+            persistent=False,
         )
         self.register_buffer("wm_variance_ema", torch.ones(target_dim))
         self.register_buffer("wm_variance_ema_updates", torch.zeros((), dtype=torch.long))
@@ -483,7 +551,8 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             if self.adapter_branch_mode in ("err_only", "full")
             else zero
         )
-        return selected_dynamics, selected_tracking
+        joint_scale = self.residual_joint_scale.to(dtype=delta_dynamics.dtype)
+        return selected_dynamics * joint_scale, selected_tracking * joint_scale
 
     def candidate_delta_scale(self):
         dyn_scale = self.adapter.dynamics_branch.delta_scale
@@ -578,6 +647,122 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
     def safety_from_delta_risk(self, delta_risk):
         return torch.exp(-self.gate_risk_k * F.relu(delta_risk)).clamp(0.0, 1.0)
 
+    def predicted_improvement_gates(
+        self, observations, base_action, selected_dynamics, selected_tracking
+    ):
+        """Estimate whether each branch improves next-frame tracking.
+
+        The error-trend model is already trained from real transitions.  Here
+        it evaluates the frozen base action and each branch counterfactual.
+        A branch is admitted only when its predicted normalized tracking MSE
+        is lower.  These gates are detached auxiliary estimates; PPO cannot
+        game the predictor through this comparison.
+        """
+        batch = observations.shape[0]
+        if not self.use_predicted_improvement_gate:
+            ones = observations.new_ones(batch)
+            zeros = observations.new_zeros(batch)
+            return ones, ones, zeros, zeros
+        _, _, raw_history = self.split_dtera_obs(observations)
+        history = self.normalize_tracking_error(raw_history)
+        current_error = history[:, -1]
+        z_error = self.encode_tracking_history_for_auxiliary(raw_history)
+        with torch.no_grad():
+            base_next = current_error + self.error_trend_predictor(
+                current_error, base_action, z_error
+            )
+            base_cost = base_next.square().mean(dim=-1)
+
+            if self.predicted_improvement_mode == "feedback_line_search":
+                scales = self.feedback_residual_scale_candidates.to(
+                    dtype=base_action.dtype
+                )
+
+                def feedback_scale(candidate):
+                    actions = (
+                        base_action[:, None, :]
+                        + scales[None, :, None] * candidate.detach()[:, None, :]
+                    )
+                    count = scales.shape[0]
+                    expanded_error = current_error[:, None, :].expand(
+                        -1, count, -1
+                    )
+                    expanded_latent = z_error[:, None, :].expand(-1, count, -1)
+                    predicted_delta = self.error_trend_predictor(
+                        expanded_error.reshape(-1, self.tracking_error_frame_dim),
+                        actions.reshape(-1, self.num_actions),
+                        expanded_latent.reshape(-1, self.tracking_latent_dim),
+                    ).reshape(
+                        observations.shape[0], count,
+                        self.tracking_error_frame_dim,
+                    )
+                    costs = (expanded_error + predicted_delta).square().mean(dim=-1)
+                    # Compare relative, rather than absolute, error. This
+                    # removes the scale mismatch that made V4's old fixed
+                    # 0.02 threshold close both branches near iteration 1000.
+                    relative_cost = costs / base_cost[:, None].clamp_min(1e-4)
+                    weights = torch.softmax(
+                        -relative_cost / self.feedback_temperature, dim=-1
+                    )
+                    selected_scale = torch.sum(weights * scales[None, :], dim=-1)
+                    selected_cost = torch.sum(weights * costs, dim=-1)
+                    return selected_scale, base_cost - selected_cost
+
+                predicted_dyn_gate, dyn_improvement = feedback_scale(
+                    selected_dynamics
+                )
+                predicted_track_gate, track_improvement = feedback_scale(
+                    selected_tracking
+                )
+            else:
+                dyn_next = current_error + self.error_trend_predictor(
+                    current_error, base_action + selected_dynamics.detach(), z_error
+                )
+                track_next = current_error + self.error_trend_predictor(
+                    current_error, base_action + selected_tracking.detach(), z_error
+                )
+                dyn_improvement = base_cost - dyn_next.square().mean(dim=-1)
+                track_improvement = base_cost - track_next.square().mean(dim=-1)
+                predicted_dyn_gate = self._smoothstep_demand(
+                    dyn_improvement, self.predicted_improvement_low,
+                    self.predicted_improvement_high,
+                )
+                predicted_track_gate = self._smoothstep_demand(
+                    track_improvement, self.predicted_improvement_low,
+                    self.predicted_improvement_high,
+                )
+            iteration = int(self.residual_training_iteration.item())
+            if iteration <= self.predicted_improvement_gate_start_iteration:
+                alpha = 0.0
+            elif self.predicted_improvement_gate_ramp_iterations <= 0:
+                alpha = 1.0
+            else:
+                alpha = min(
+                    (iteration - self.predicted_improvement_gate_start_iteration)
+                    / self.predicted_improvement_gate_ramp_iterations,
+                    1.0,
+                )
+            # Bootstrap safely: a zero-initialized residual predicts exactly
+            # zero improvement. Applying a hard zero gate from iteration zero
+            # would also zero its PPO gradient forever.
+            dyn_gate = 1.0 - alpha * (1.0 - predicted_dyn_gate)
+            track_gate = 1.0 - alpha * (1.0 - predicted_track_gate)
+        return dyn_gate, track_gate, dyn_improvement, track_improvement
+
+    def predicted_improvement_gate_alpha(self):
+        if not self.use_predicted_improvement_gate:
+            return 0.0
+        iteration = int(self.residual_training_iteration.item())
+        if iteration <= self.predicted_improvement_gate_start_iteration:
+            return 0.0
+        if self.predicted_improvement_gate_ramp_iterations <= 0:
+            return 1.0
+        return min(
+            (iteration - self.predicted_improvement_gate_start_iteration)
+            / self.predicted_improvement_gate_ramp_iterations,
+            1.0,
+        )
+
     def effective_confidence(self, confidence):
         strength = self.confidence_gate_strength
         return 1.0 - strength * (1.0 - confidence)
@@ -611,6 +796,8 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         dynamics_demand,
         confidence,
         safety,
+        dynamics_improvement_gate,
+        tracking_improvement_gate,
     ):
         """Apply the configured shared or per-branch gates.
 
@@ -655,10 +842,10 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
                 tracking_gate = full_gate
 
             dynamics_gate = (
-                self.dynamics_gate_scale * dynamics_gate
+                self.dynamics_gate_scale * dynamics_gate * dynamics_improvement_gate
             ).clamp(0.0, 1.0)
             tracking_gate = (
-                self.tracking_gate_scale * tracking_gate
+                self.tracking_gate_scale * tracking_gate * tracking_improvement_gate
             ).clamp(0.0, 1.0)
             if self.adapter_branch_mode not in ("dyn_only", "full"):
                 dynamics_gate = torch.zeros_like(dynamics_gate)
@@ -669,11 +856,11 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             # Preserve the historical field as the tracking-gate alias.
             gate = tracking_gate
         else:
-            dynamics_gate = legacy_gate
-            tracking_gate = legacy_gate
-            gated_dynamics = legacy_gate.unsqueeze(-1) * selected_dynamics
-            gated_tracking = legacy_gate.unsqueeze(-1) * selected_tracking
-            gate = legacy_gate
+            dynamics_gate = legacy_gate * dynamics_improvement_gate
+            tracking_gate = legacy_gate * tracking_improvement_gate
+            gated_dynamics = dynamics_gate.unsqueeze(-1) * selected_dynamics
+            gated_tracking = tracking_gate.unsqueeze(-1) * selected_tracking
+            gate = tracking_gate
 
         return {
             "effective_confidence": effective_confidence,
@@ -717,6 +904,11 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         error_frame = tracking_history[:, -1]
         tracking_demand = self.tracking_demand(error_frame)
         dynamics_demand = self.dynamics_demand(error_frame)
+        dyn_improvement_gate, track_improvement_gate, _, _ = (
+            self.predicted_improvement_gates(
+                observations, base_action, selected_dynamics, selected_tracking
+            )
+        )
 
         confidence = tracking_demand.new_ones(tracking_demand.shape)
         safety = tracking_demand.new_ones(tracking_demand.shape)
@@ -750,6 +942,8 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             dynamics_demand,
             confidence,
             safety,
+            dyn_improvement_gate,
+            track_improvement_gate,
         )
         return self.residual_warmup_factor() * gates["gated_delta"]
 
@@ -767,6 +961,10 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
         error_frame = tracking_history[:, -1]
         demand = self.tracking_demand(error_frame)
         dynamics_demand = self.dynamics_demand(error_frame)
+        (dyn_improvement_gate, track_improvement_gate,
+         dyn_improvement, track_improvement) = self.predicted_improvement_gates(
+            observations, base_action, selected_dynamics, selected_tracking
+        )
 
         # WM/risk are diagnostic gate models during the PPO phase.  Their
         # parameters and the dynamics encoder must remain frozen until the
@@ -791,6 +989,8 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             dynamics_demand,
             confidence,
             safety,
+            dyn_improvement_gate,
+            track_improvement_gate,
         )
         alpha_res = self.residual_warmup_factor()
         applied = alpha_res * gates["gated_delta"]
@@ -815,6 +1015,11 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             "gate": gates["gate"],
             "dynamics_gate": gates["dynamics_gate"],
             "tracking_gate": gates["tracking_gate"],
+            "dynamics_improvement_gate": dyn_improvement_gate,
+            "tracking_improvement_gate": track_improvement_gate,
+            "predicted_improvement_gate_alpha": self.predicted_improvement_gate_alpha(),
+            "dynamics_predicted_improvement": dyn_improvement,
+            "tracking_predicted_improvement": track_improvement,
             "residual_warmup_factor": alpha_res,
             "gated_delta_dyn": gates["gated_delta_dyn"],
             "gated_delta_err": gates["gated_delta_err"],
@@ -983,6 +1188,21 @@ class TwistDTERAActorCritic(TwistAnyAdapterActorCritic):
             "tracking_gate_mean": float(tracking_gate.mean().detach().cpu()),
             "tracking_gate_p10": float(torch.quantile(tracking_gate.detach(), 0.10).cpu()),
             "tracking_gate_p90": float(torch.quantile(tracking_gate.detach(), 0.90).cpu()),
+            "dynamics_improvement_gate_mean": float(
+                diag["dynamics_improvement_gate"].mean().detach().cpu()
+            ),
+            "tracking_improvement_gate_mean": float(
+                diag["tracking_improvement_gate"].mean().detach().cpu()
+            ),
+            "dynamics_predicted_improvement_mean": float(
+                diag["dynamics_predicted_improvement"].mean().detach().cpu()
+            ),
+            "tracking_predicted_improvement_mean": float(
+                diag["tracking_predicted_improvement"].mean().detach().cpu()
+            ),
+            "predicted_improvement_gate_alpha": float(
+                diag["predicted_improvement_gate_alpha"]
+            ),
             "p_base_mean": float(diag["p_base"].mean().cpu()),
             "p_candidate_mean": float(diag["p_candidate"].mean().cpu()),
             "delta_risk_mean": float(delta_risk.mean().cpu()),
