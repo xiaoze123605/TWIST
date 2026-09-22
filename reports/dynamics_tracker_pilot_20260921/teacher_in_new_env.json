@@ -1,0 +1,19 @@
+{
+  "task": "g1_dynamics_tracker_adaptive_wide",
+  "teacher": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt",
+  "motion_file": "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "first_episode_completion_rate": 1.0,
+  "first_episode_duration_s": [
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624,
+    7.62000036239624
+  ],
+  "physical_failures": 0,
+  "motion_completions": 8,
+  "first_episode_censored": 0
+}
