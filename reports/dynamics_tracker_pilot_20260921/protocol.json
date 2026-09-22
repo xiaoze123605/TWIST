@@ -1,0 +1,17 @@
+{
+  "code_base": "c2479ff",
+  "training_seed": 42,
+  "evaluation_seed": 123,
+  "training_environments": 128,
+  "rollout_steps": 24,
+  "nominal_updates": 300,
+  "robust_updates": 220,
+  "evaluation_environments": 8,
+  "evaluation_steps": 400,
+  "motion": "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "motion_sha256": "ee25979f7d3b2cb38383096a4003fc91e5b61480a9e4e0530156ec8f56b0dacc",
+  "scope": "Single-clip learnability pilot, not held-out-motion or TWIST superiority benchmark",
+  "evaluation_noise": false,
+  "first_episode_definition": "From fixed reference phase zero to first failure or clip completion; unfinished at evaluation horizon is censored",
+  "stage_b_ablation": "Same robust checkpoint and environment with latent forced to zero"
+}

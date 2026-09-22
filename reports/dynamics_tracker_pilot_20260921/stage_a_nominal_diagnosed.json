@@ -1,0 +1,37 @@
+{
+  "task": "g1_dynamics_tracker",
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/pilot_20260921_2326/nominal/model_300.pt",
+  "motion_file": "track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+  "seed": 123,
+  "frames": 3200,
+  "noise": false,
+  "resets": 56,
+  "latent_enabled": false,
+  "zero_latent_ablation": false,
+  "physical_failures": 56,
+  "motion_completions": 0,
+  "timeouts": 0,
+  "joint_rmse_rad": 0.16038967518864633,
+  "root_height_rmse_m": 0.0677674855499015,
+  "torque_saturation_fraction": 0.0,
+  "first_episode_completion_rate": 0.0,
+  "first_episode_censored": 0,
+  "first_episode_duration_s": [
+    1.0200001001358032,
+    1.0000001192092896,
+    1.0000001192092896,
+    1.0200001001358032,
+    1.0200001001358032,
+    1.040000081062317,
+    1.040000081062317,
+    1.0200001001358032
+  ],
+  "failure_reason_counts": {
+    "contact": 0,
+    "height": 56,
+    "tilt": 0,
+    "speed": 0,
+    "pose": 0
+  },
+  "scripted_action_parity": true
+}

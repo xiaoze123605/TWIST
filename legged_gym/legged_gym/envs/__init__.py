@@ -95,10 +95,16 @@ task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdap
 from .g1.g1_dynamics_tracker import G1DynamicsTracker
 from .g1.g1_dynamics_tracker_config import (
     G1DynamicsTrackerCfg, G1DynamicsTrackerRobustCfg,
-    G1DynamicsTrackerDirectCfg, G1DynamicsTrackerDirectRobustCfg,
-    G1DynamicsTrackerCfgPPO, G1DynamicsTrackerRobustCfgPPO,
+    G1DynamicsTrackerDirectCfg, G1DynamicsTrackerDirectRobustCfg, G1DynamicsTrackerHeightCfg,
+    G1DynamicsTrackerPreviewCfg,
+    G1DynamicsTrackerWideCfg,
+    G1DynamicsTrackerCfgPPO, G1DynamicsTrackerRobustCfgPPO, G1DynamicsTrackerAdaptiveCfgPPO,
 )
 task_registry.register("g1_dynamics_tracker", G1DynamicsTracker, G1DynamicsTrackerCfg(), G1DynamicsTrackerCfgPPO())
+task_registry.register("g1_dynamics_tracker_adaptive", G1DynamicsTracker, G1DynamicsTrackerCfg(), G1DynamicsTrackerAdaptiveCfgPPO())
+task_registry.register("g1_dynamics_tracker_adaptive_height", G1DynamicsTracker, G1DynamicsTrackerHeightCfg(), G1DynamicsTrackerAdaptiveCfgPPO())
+task_registry.register("g1_dynamics_tracker_adaptive_preview", G1DynamicsTracker, G1DynamicsTrackerPreviewCfg(), G1DynamicsTrackerAdaptiveCfgPPO())
+task_registry.register("g1_dynamics_tracker_adaptive_wide", G1DynamicsTracker, G1DynamicsTrackerWideCfg(), G1DynamicsTrackerAdaptiveCfgPPO())
 task_registry.register("g1_dynamics_tracker_robust", G1DynamicsTracker, G1DynamicsTrackerRobustCfg(), G1DynamicsTrackerRobustCfgPPO())
 task_registry.register("g1_dynamics_tracker_direct", G1DynamicsTracker, G1DynamicsTrackerDirectCfg(), G1DynamicsTrackerCfgPPO())
 task_registry.register("g1_dynamics_tracker_direct_robust", G1DynamicsTracker, G1DynamicsTrackerDirectRobustCfg(), G1DynamicsTrackerRobustCfgPPO())

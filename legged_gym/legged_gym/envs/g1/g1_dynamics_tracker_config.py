@@ -45,6 +45,9 @@ class G1DynamicsTrackerCfg(G1MimicStuRLCfg):
     class rewards(G1MimicStuRLCfg.rewards):
         regularization_scale_curriculum = False
         class scales(G1MimicStuRLCfg.rewards.scales):
+            # Reward scales are multiplied by dt; -50 gives -1 at a physical
+            # failure and does not penalize normal clip completion/timeouts.
+            termination = -50.0
             action_rate = -0.02  # actual sent target, rad
             feet_air_time = 0.0  # no universal gait duration for all motions
 
@@ -77,6 +80,24 @@ class G1DynamicsTrackerDirectCfg(G1DynamicsTrackerCfg):
 class G1DynamicsTrackerDirectRobustCfg(G1DynamicsTrackerRobustCfg):
     class control(G1DynamicsTrackerRobustCfg.control):
         action_mode = "direct"
+
+
+class G1DynamicsTrackerHeightCfg(G1DynamicsTrackerCfg):
+    class rewards(G1DynamicsTrackerCfg.rewards):
+        class scales(G1DynamicsTrackerCfg.rewards.scales):
+            root_height_tracking = 0.5
+
+
+class G1DynamicsTrackerPreviewCfg(G1DynamicsTrackerCfg):
+    class env(G1DynamicsTrackerCfg.env):
+        # A control command computed at t is applied over [t, t+dt]. The old
+        # TWIST policy uses this one-control-interval target as its first goal.
+        tar_obs_steps = [1]
+
+
+class G1DynamicsTrackerWideCfg(G1DynamicsTrackerCfg):
+    class control(G1DynamicsTrackerCfg.control):
+        target_scales = [0.6, 0.5, 0.8, 0.6, 0.8, 0.35] * 2 + [0.4, 0.3, 0.3] + [0.6] * 8
 
 
 class G1DynamicsTrackerCfgPPO(BaseConfig):
@@ -128,3 +149,13 @@ class G1DynamicsTrackerRobustCfgPPO(G1DynamicsTrackerCfgPPO):
         learning_rate = 1e-4
     class runner(G1DynamicsTrackerCfgPPO.runner):
         run_name = "robust"
+
+
+class G1DynamicsTrackerAdaptiveCfgPPO(G1DynamicsTrackerCfgPPO):
+    """Nominal physics with the already-pretrained history latent enabled."""
+    class policy(G1DynamicsTrackerCfgPPO.policy):
+        use_dynamics_latent = True
+    class algorithm(G1DynamicsTrackerCfgPPO.algorithm):
+        learning_rate = 1e-4
+    class runner(G1DynamicsTrackerCfgPPO.runner):
+        run_name = "nominal_adaptive"

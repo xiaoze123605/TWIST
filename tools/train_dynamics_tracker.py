@@ -51,6 +51,7 @@ def main():
         input_sha256={str(Path(path).resolve()): hashlib.sha256(Path(path).read_bytes()).hexdigest()
                       for path in [cfg.motion.motion_file] + ([checkpoint] if checkpoint else [])},
         deployment=runner.spec), indent=2, default=lambda value: value.tolist()))
+    runner.save(output / 'initial_model.pt')
     runner.learn(training.runner.max_iterations)
 
 

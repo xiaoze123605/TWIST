@@ -150,6 +150,10 @@ class G1DynamicsTracker(G1MimicDistill):
         # Regularize actual sent PD targets, not unbounded/pre-tanh samples.
         return (self.sent_target - self.previous_target).square().sum(-1)
 
+    def _reward_root_height_tracking(self):
+        error = self.root_states[:, 2] - self._ref_root_pos[:, 2]
+        return torch.exp(-100. * error.square())
+
     def _post_physics_step_callback(self):
         super()._post_physics_step_callback()
         # Pushes may alter root velocity after the parent cached proprioception.
@@ -158,32 +162,53 @@ class G1DynamicsTracker(G1MimicDistill):
 
     def check_termination(self):
         contact = torch.linalg.vector_norm(self.contact_forces[:, self.termination_contact_indices], dim=-1)
-        failure = torch.any(contact > 1., dim=-1)
-        failure |= (self.root_states[:, 2] - self._ref_root_pos[:, 2]).abs() > self.cfg.rewards.root_height_diff_threshold
-        failure |= (self.roll.abs() > self.cfg.rewards.termination_roll) | (self.pitch.abs() > self.cfg.rewards.termination_pitch)
-        failure |= torch.linalg.vector_norm(self.root_states[:, 7:10], dim=-1) > 5.
+        contact_failure = torch.any(contact > 1., dim=-1)
+        height_error = (self.root_states[:, 2] - self._ref_root_pos[:, 2]).abs()
+        height_failure = height_error > self.cfg.rewards.root_height_diff_threshold
+        tilt_failure = (self.roll.abs() > self.cfg.rewards.termination_roll) | (self.pitch.abs() > self.cfg.rewards.termination_pitch)
+        speed_failure = torch.linalg.vector_norm(self.root_states[:, 7:10], dim=-1) > 5.
+        failure = contact_failure | height_failure | tilt_failure | speed_failure
+        pose_error = torch.zeros_like(height_error)
+        pose_failure = torch.zeros_like(failure)
         if self._pose_termination:
             actual = self.rigid_body_states[:, self._key_body_ids, :3] - self.root_states[:, None, :3]
             target = self._ref_body_pos[:, self._key_body_ids] - self._ref_root_pos[:, None, :]
             if not self.global_obs:
                 actual = convert_to_local_root_body_pos(self.root_states[:, 3:7], actual)
                 target = convert_to_local_root_body_pos(self._ref_root_rot, target)
-            failure |= (target - actual).square().sum(-1).amax(-1) > self._pose_termination_dist ** 2
+            pose_error = (target - actual).square().sum(-1).amax(-1).sqrt()
+            pose_failure = pose_error > self._pose_termination_dist
+            failure |= pose_failure
         motion_end = self._get_motion_times() >= self._motion_lib.get_motion_length(self._motion_ids)
         timeout = self.episode_length_buf >= self.max_episode_length
         # Finite reference clips are terminal, not an infinite-horizon timeout.
         self.time_out_buf = timeout & ~failure & ~motion_end
         self.reset_buf = failure | timeout | motion_end
+        self._physical_failure = failure
         self.terminal_state.copy_(self.clean_state())
         _, next_reference = self._get_mimic_obs()
         task = reference_features(self._relative_reference(next_reference), self.previous_reference,
                                   self.reference_initialized, self.dt)
         self.terminal_critic.copy_(self._critic_observation(self.terminal_state, task))
         self.extras['tracking_joint_error'] = (self.dof_pos - self._ref_dof_pos).detach().clone()
+        self.extras['tracking_joint_velocity_error'] = (self.dof_vel - self._ref_dof_vel).detach().clone()
+        self.extras['sent_reference_offset'] = (self.sent_target - self._ref_dof_pos).detach().clone()
+        self.extras['torque_limit_ratio'] = (self.torques.abs() / self.torque_limits).detach().clone()
         self.extras['tracking_height_error'] = (self.root_states[:,2] - self._ref_root_pos[:,2]).detach().clone()
         self.extras['torque_saturation_fraction'] = (self.torques.abs() >= self.torque_limits*.99).float().mean(-1)
         self.extras['physical_failure'] = failure.clone()
         self.extras['motion_completed'] = motion_end & ~failure
+        self.extras['failure_contact'] = contact_failure
+        self.extras['failure_height'] = height_failure
+        self.extras['failure_tilt'] = tilt_failure
+        self.extras['failure_speed'] = speed_failure
+        self.extras['failure_pose'] = pose_failure
+        self.extras['root_height_abs_error'] = height_error
+        self.extras['max_keybody_error'] = pose_error
+        self.extras['base_roll_pitch'] = torch.stack((self.roll, self.pitch), dim=-1).detach().clone()
+
+    def _reward_termination(self):
+        return self._physical_failure.float()
 
     def reset_idx(self, env_ids, motion_ids=None):
         """RSI without advancing EVERY simulator environment an extra substep."""
@@ -238,5 +263,5 @@ class G1DynamicsTracker(G1MimicDistill):
                     history_order="oldest_to_newest:state_t,sent_target_t,valid",
                     reference_order="height,roll,pitch,relative_yaw,local_vxyz,local_wz,q_ref",
                     reference_velocity="backward_difference_clamp20_scaled.05",
-                    reference_time_offset_steps=0,
+                    reference_time_offset_steps=int(self.cfg.env.tar_obs_steps[0]),
                     padding="zeros_with_invalid_mask", action_filter="none")

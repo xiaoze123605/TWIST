@@ -79,9 +79,18 @@ class DynamicsTrackerRunner:
         checkpoint = torch.load(path, map_location=self.device)
         previous = dict(checkpoint["deployment_spec"])
         current = dict(self.spec)
+        rescale_output = False
         if warm_start:
             previous.pop("use_dynamics_latent", None)
             current.pop("use_dynamics_latent", None)
+            # A warm-start experiment may change whether the supplied goal is
+            # the current sample or the command interval endpoint.
+            previous.pop('reference_time_offset_steps', None)
+            current.pop('reference_time_offset_steps', None)
+            if previous.get('action_mode') == current.get('action_mode') == 'reference':
+                rescale_output = previous.get('target_scales') != current.get('target_scales')
+                previous.pop('target_scales', None)
+                current.pop('target_scales', None)
         if previous != current:
             raise ValueError("checkpoint deployment contract differs from the current task")
         if not warm_start and checkpoint["train_cfg"]["policy"] != self.policy_cfg:
@@ -89,6 +98,13 @@ class DynamicsTrackerRunner:
         if not warm_start and checkpoint['train_cfg']['algorithm'] != self.alg_cfg:
             raise ValueError('resume algorithm configuration differs; use warm start for a new experiment')
         self.alg.actor_critic.load_state_dict(checkpoint["model_state_dict"], strict=True)
+        if rescale_output:
+            old = torch.tensor(checkpoint['deployment_spec']['target_scales'], device=self.device)
+            new = torch.tensor(self.spec['target_scales'], device=self.device)
+            ratio = old / new
+            with torch.no_grad():
+                self.alg.actor_critic.actor[-1].weight.mul_(ratio[:, None])
+                self.alg.actor_critic.actor[-1].bias.mul_(ratio)
         if (warm_start and self.policy_cfg['use_dynamics_latent'] and
                 not checkpoint['train_cfg']['policy']['use_dynamics_latent']):
             # Stage A saw zero latent inputs: these columns were never trained.
