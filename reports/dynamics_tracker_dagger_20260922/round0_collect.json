@@ -1,0 +1,23 @@
+{
+  "dataset": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/replay.pt",
+  "dataset_sha256": "ef135e09a86596c251010c40e99944a1110ce3c21d11dd0b9c47f17e8887f8e4",
+  "content_sha256": "1cecea46824616c876f3a0d02f35429523c384a04d49505dee263e7a47f15096",
+  "sample_count": 25600,
+  "source_counts": {
+    "teacher": 25600,
+    "old_student": 0,
+    "current_student": 0
+  },
+  "latest_round": {
+    "round": 0,
+    "beta": 1.0,
+    "samples": 25600,
+    "seed": 42,
+    "steps": 400,
+    "student_checkpoint": null,
+    "random_phase": true
+  },
+  "phase_min": 0.004562184680253267,
+  "phase_max": 0.9999790191650391,
+  "failure_adjacent_samples": 0
+}

@@ -32,6 +32,7 @@ class DynamicsTrackerRunner:
         self.alg.init_storage(env.num_envs, self.num_steps_per_env, [env.num_obs],
                               [env.num_privileged_obs], [env.num_actions])
         self.current_learning_iteration = 0
+        self.extra_checkpoint_metadata = {}
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         if init_at_random_ep_len:
@@ -73,7 +74,8 @@ class DynamicsTrackerRunner:
                         wm_optimizer_state_dict=self.alg.wm_optimizer.state_dict(),
                         iter=self.current_learning_iteration, train_cfg=self.cfg,
                         deployment_spec=self.spec,
-                        critic_dim=self.env.num_privileged_obs), path)
+                        critic_dim=self.env.num_privileged_obs,
+                        metadata=dict(self.extra_checkpoint_metadata)), path)
 
     def load(self, path, load_optimizer=True, warm_start=False):
         checkpoint = torch.load(path, map_location=self.device)

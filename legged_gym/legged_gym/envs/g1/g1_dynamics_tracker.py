@@ -25,6 +25,41 @@ class G1DynamicsTracker(G1MimicDistill):
         self.max_episode_length = int(self.max_episode_length_s / self.dt)
         self.compute_observations()
 
+    def _reset_ref_motion(self, env_ids, motion_ids=None):
+        """Optionally randomize collection phases without changing evaluation RSI.
+
+        DAgger collectors opt in by setting ``dagger_randomize_phase`` after
+        environment construction. Normal training and fixed-phase evaluation
+        continue through the inherited path unchanged.
+        """
+        if not getattr(self, "dagger_randomize_phase", False):
+            return super()._reset_ref_motion(env_ids, motion_ids)
+        if motion_ids is None:
+            motion_ids = self._motion_lib.sample_motions(
+                len(env_ids), motion_difficulty=self.motion_difficulty)
+        lengths = self._motion_lib.get_motion_length(motion_ids)
+        latest = (lengths - self._minimum_reference_remaining_time).clamp_min(0.)
+        motion_times = torch.rand(len(env_ids), device=self.device) * latest
+        had_ids = hasattr(self, "_eval_scenario_motion_ids")
+        had_times = hasattr(self, "_eval_scenario_motion_times")
+        old_ids = getattr(self, "_eval_scenario_motion_ids", None)
+        old_times = getattr(self, "_eval_scenario_motion_times", None)
+        fixed_ids = self._motion_ids.clone()
+        fixed_times = self._motion_time_offsets.clone()
+        fixed_ids[env_ids], fixed_times[env_ids] = motion_ids, motion_times
+        self._eval_scenario_motion_ids, self._eval_scenario_motion_times = fixed_ids, fixed_times
+        try:
+            return super()._reset_ref_motion(env_ids, motion_ids)
+        finally:
+            if had_ids:
+                self._eval_scenario_motion_ids = old_ids
+            else:
+                del self._eval_scenario_motion_ids
+            if had_times:
+                self._eval_scenario_motion_times = old_times
+            else:
+                del self._eval_scenario_motion_times
+
     def _init_buffers(self):
         self._minimum_reference_remaining_time = 22 * self.dt
         super()._init_buffers()

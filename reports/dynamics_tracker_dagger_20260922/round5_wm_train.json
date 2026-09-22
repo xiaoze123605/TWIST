@@ -1,0 +1,173 @@
+{
+  "dataset": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/replay.pt",
+  "dataset_sha256": "118498a30751c3cda23b6f0899f6a9df5efb506d5bd424068692c56000291555",
+  "dataset_sample_count": 153600,
+  "collection_round": 5,
+  "dataset_source_counts": {
+    "teacher": 82316,
+    "old_student": 45684,
+    "current_student": 25600
+  },
+  "train_samples": 123316,
+  "validation_samples": 30284,
+  "epochs": 30,
+  "sampled_source_fraction": {
+    "teacher": 0.3999967575073242,
+    "old_student": 0.3000016212463379,
+    "current_student": 0.3000016212463379
+  },
+  "final_epoch_imitation_loss": 0.0035562409157287485,
+  "train_imitation_loss": 0.0029111778936330196,
+  "validation_imitation_loss": 0.0033430991973182945,
+  "imitation_gap": 0.0004319213036852749,
+  "train_target_error": {
+    "all_joints": {
+      "mean_abs_rad": 0.023305019363760948,
+      "rmse_rad": 0.04401117190718651,
+      "p95_abs_rad": 0.07993420958518982,
+      "max_abs_rad": 1.0638477802276611
+    },
+    "hips": {
+      "mean_abs_rad": 0.0237269327044487,
+      "rmse_rad": 0.043243471533060074,
+      "p95_abs_rad": 0.07792411744594574,
+      "max_abs_rad": 0.9021671414375305
+    },
+    "knees": {
+      "mean_abs_rad": 0.02176040969789028,
+      "rmse_rad": 0.040836773812770844,
+      "p95_abs_rad": 0.07509277760982513,
+      "max_abs_rad": 0.6694706082344055
+    },
+    "ankles": {
+      "mean_abs_rad": 0.02394382655620575,
+      "rmse_rad": 0.04924570769071579,
+      "p95_abs_rad": 0.08678925782442093,
+      "max_abs_rad": 1.0638477802276611
+    },
+    "upper_body": {
+      "mean_abs_rad": 0.023123418912291527,
+      "rmse_rad": 0.042953234165906906,
+      "p95_abs_rad": 0.0795314759016037,
+      "max_abs_rad": 1.0469907522201538
+    },
+    "left_ankle_pitch_joint": {
+      "mean_abs_rad": 0.03589066118001938,
+      "rmse_rad": 0.06794319301843643,
+      "p95_abs_rad": 0.12305635213851929,
+      "max_abs_rad": 1.0638477802276611
+    },
+    "right_ankle_pitch_joint": {
+      "mean_abs_rad": 0.031096430495381355,
+      "rmse_rad": 0.0585249587893486,
+      "p95_abs_rad": 0.11149761825799942,
+      "max_abs_rad": 0.8756462931632996
+    },
+    "left_hip_roll_joint": {
+      "mean_abs_rad": 0.02277936041355133,
+      "rmse_rad": 0.04040766507387161,
+      "p95_abs_rad": 0.07787395268678665,
+      "max_abs_rad": 0.5416809320449829
+    },
+    "right_hip_roll_joint": {
+      "mean_abs_rad": 0.025992201641201973,
+      "rmse_rad": 0.045456476509571075,
+      "p95_abs_rad": 0.07997803390026093,
+      "max_abs_rad": 0.6559474468231201
+    },
+    "left_hip_yaw_joint": {
+      "mean_abs_rad": 0.021821871399879456,
+      "rmse_rad": 0.038340985774993896,
+      "p95_abs_rad": 0.06880846619606018,
+      "max_abs_rad": 0.6067526340484619
+    },
+    "right_hip_yaw_joint": {
+      "mean_abs_rad": 0.022784754633903503,
+      "rmse_rad": 0.04315640404820442,
+      "p95_abs_rad": 0.07280952483415604,
+      "max_abs_rad": 0.8989070653915405
+    }
+  },
+  "validation_target_error": {
+    "all_joints": {
+      "mean_abs_rad": 0.024144139140844345,
+      "rmse_rad": 0.04694035276770592,
+      "p95_abs_rad": 0.08424723148345947,
+      "max_abs_rad": 1.0099282264709473
+    },
+    "hips": {
+      "mean_abs_rad": 0.024607494473457336,
+      "rmse_rad": 0.04637642949819565,
+      "p95_abs_rad": 0.08257215470075607,
+      "max_abs_rad": 0.8961997032165527
+    },
+    "knees": {
+      "mean_abs_rad": 0.022479422390460968,
+      "rmse_rad": 0.04356640577316284,
+      "p95_abs_rad": 0.08130963146686554,
+      "max_abs_rad": 0.6303447484970093
+    },
+    "ankles": {
+      "mean_abs_rad": 0.024683114141225815,
+      "rmse_rad": 0.052350372076034546,
+      "p95_abs_rad": 0.09121470898389816,
+      "max_abs_rad": 0.8820650577545166
+    },
+    "upper_body": {
+      "mean_abs_rad": 0.023998085409402847,
+      "rmse_rad": 0.045741546899080276,
+      "p95_abs_rad": 0.08359318971633911,
+      "max_abs_rad": 1.0099282264709473
+    },
+    "left_ankle_pitch_joint": {
+      "mean_abs_rad": 0.036458820104599,
+      "rmse_rad": 0.07072696089744568,
+      "p95_abs_rad": 0.12359122931957245,
+      "max_abs_rad": 0.8820650577545166
+    },
+    "right_ankle_pitch_joint": {
+      "mean_abs_rad": 0.03213215246796608,
+      "rmse_rad": 0.06270022690296173,
+      "p95_abs_rad": 0.12005253881216049,
+      "max_abs_rad": 0.8076747059822083
+    },
+    "left_hip_roll_joint": {
+      "mean_abs_rad": 0.023691272363066673,
+      "rmse_rad": 0.04398975893855095,
+      "p95_abs_rad": 0.08190641552209854,
+      "max_abs_rad": 0.6132016777992249
+    },
+    "right_hip_roll_joint": {
+      "mean_abs_rad": 0.02738269418478012,
+      "rmse_rad": 0.050168849527835846,
+      "p95_abs_rad": 0.08419067412614822,
+      "max_abs_rad": 0.6229404211044312
+    },
+    "left_hip_yaw_joint": {
+      "mean_abs_rad": 0.022569851949810982,
+      "rmse_rad": 0.041290394961833954,
+      "p95_abs_rad": 0.07295592129230499,
+      "max_abs_rad": 0.5998523831367493
+    },
+    "right_hip_yaw_joint": {
+      "mean_abs_rad": 0.023172760382294655,
+      "rmse_rad": 0.045105304569005966,
+      "p95_abs_rad": 0.07383926957845688,
+      "max_abs_rad": 0.8288501501083374
+    }
+  },
+  "observation_ambiguity": {
+    "samples": 2048,
+    "nearest_observation_distance_mean": 0.9358485341072083,
+    "nearest_teacher_target_rmse_rad": 0.03900283947587013,
+    "nearest_teacher_target_p95_abs_rad": 0.07329179346561432
+  },
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round5_wm.pt",
+  "checkpoint_metadata": {
+    "dagger_dataset_sha256": "118498a30751c3cda23b6f0899f6a9df5efb506d5bd424068692c56000291555",
+    "dagger_dataset_content_sha256": "3c71f3d1689830ac5294743ae58ae5d3fa0ac6503686a62b96c261e666469e9e",
+    "dagger_dataset_sample_count": 153600,
+    "dagger_collection_round": 5,
+    "dynamics_checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/pilot_20260922_adaptive_wide/resume_to_300/model_300.pt"
+  }
+}

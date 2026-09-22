@@ -10,6 +10,9 @@ from rsl_rl.modules.dynamics_tracker_runtime import DeploymentPolicy, DynamicsTr
 from rsl_rl.algorithms.ppo_dynamics_tracker import PPODynamicsTracker
 from tools.export_dynamics_tracker import export
 from rsl_rl.runners.dynamics_tracker_runner import DynamicsTrackerRunner
+from rsl_rl.datasets.dynamics_dagger_buffer import (
+    DynamicsDaggerBuffer, SOURCE_CURRENT_STUDENT, SOURCE_OLD_STUDENT, SOURCE_TEACHER,
+)
 
 
 def actor(latent=True):
@@ -180,3 +183,39 @@ def test_timeout_bootstraps_terminal_critic_not_reset_state():
     torch.testing.assert_close(alg.storage.rewards[0,0,0], expected)
     assert alg.storage.rewards[0,1,0] == 1
     assert alg.dyn_next[0].eq(1).all()
+
+
+def _dagger_round(round_id, source, count=20):
+    return dict(
+        actor_input=torch.randn(count, 303), teacher_target=torch.randn(count, 23),
+        motion_id=torch.zeros(count, dtype=torch.long), motion_time=torch.linspace(0, 1, count),
+        motion_phase=torch.linspace(0, 1, count),
+        episode_id=torch.arange(count, dtype=torch.long) + round_id*100,
+        source=torch.full((count,), source, dtype=torch.long),
+        steps_to_failure=torch.tensor(([30, 40, -1, -1]*((count+3)//4))[:count]),
+        failure_margin_m=torch.linspace(-.01, .2, count),
+        seed=torch.full((count,), 42, dtype=torch.long),
+        action_mode=torch.zeros(count, dtype=torch.long),
+        target_scale_version=torch.ones(count, dtype=torch.long),
+        collection_round=torch.full((count,), round_id, dtype=torch.long))
+
+
+def test_cumulative_dagger_replay_and_stratification(tmp_path):
+    replay = DynamicsDaggerBuffer()
+    replay.append_round(_dagger_round(0, SOURCE_TEACHER), {'round': 0, 'beta': 1.0})
+    replay.append_round(_dagger_round(1, SOURCE_CURRENT_STUDENT), {'round': 1, 'beta': .7})
+    replay.append_round(_dagger_round(2, SOURCE_CURRENT_STUDENT), {'round': 2, 'beta': .5})
+    assert len(replay) == 60
+    assert replay.source_counts() == {'teacher': 20, 'old_student': 20, 'current_student': 20}
+    path = tmp_path/'dagger.pt'
+    file_hash = replay.save(path)
+    loaded = DynamicsDaggerBuffer.load(path)
+    assert file_hash == loaded.file_sha256(path)
+    train, validation = loaded.split_train_validation()
+    assert train.numel() + validation.numel() == len(loaded)
+    ids = loaded.stratified_indices(torch.arange(len(loaded)), 1000, latest_round=2,
+                                    generator=torch.Generator().manual_seed(3))
+    counts = torch.bincount(loaded.tensors['source'][ids], minlength=3)
+    assert counts.tolist() == [400, 300, 300]
+    with pytest.raises(ValueError):
+        loaded.append_round(_dagger_round(2, SOURCE_CURRENT_STUDENT), {'round': 2})

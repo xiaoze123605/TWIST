@@ -1,0 +1,172 @@
+{
+  "dataset": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/replay.pt",
+  "dataset_sha256": "ae3b5429f05b80a5016e76dea40dda9b8e2a95fee2426a50912d02baac1d0e10",
+  "dataset_sample_count": 51200,
+  "collection_round": 1,
+  "dataset_source_counts": {
+    "teacher": 48499,
+    "old_student": 0,
+    "current_student": 2701
+  },
+  "train_samples": 41621,
+  "validation_samples": 9579,
+  "epochs": 30,
+  "sampled_source_fraction": {
+    "teacher": 0.571418285369873,
+    "old_student": 0.0,
+    "current_student": 0.42858171463012695
+  },
+  "final_epoch_imitation_loss": 0.005291640588150519,
+  "train_imitation_loss": 0.0027973566232596956,
+  "validation_imitation_loss": 0.0034252725264592113,
+  "imitation_gap": 0.0006279159031995158,
+  "train_target_error": {
+    "all_joints": {
+      "mean_abs_rad": 0.0263137798756361,
+      "rmse_rad": 0.043108705431222916,
+      "p95_abs_rad": 0.08117730915546417,
+      "max_abs_rad": 0.9458972811698914
+    },
+    "hips": {
+      "mean_abs_rad": 0.028467219322919846,
+      "rmse_rad": 0.04460182040929794,
+      "p95_abs_rad": 0.08710269629955292,
+      "max_abs_rad": 0.8722847104072571
+    },
+    "knees": {
+      "mean_abs_rad": 0.02451145276427269,
+      "rmse_rad": 0.040715888142585754,
+      "p95_abs_rad": 0.0735355094075203,
+      "max_abs_rad": 0.692923903465271
+    },
+    "ankles": {
+      "mean_abs_rad": 0.027434544637799263,
+      "rmse_rad": 0.04712251201272011,
+      "p95_abs_rad": 0.08481060713529587,
+      "max_abs_rad": 0.9458972811698914
+    },
+    "upper_body": {
+      "mean_abs_rad": 0.025059323757886887,
+      "rmse_rad": 0.041130244731903076,
+      "p95_abs_rad": 0.07754987478256226,
+      "max_abs_rad": 0.9278155565261841
+    },
+    "left_ankle_pitch_joint": {
+      "mean_abs_rad": 0.037099868059158325,
+      "rmse_rad": 0.061542216688394547,
+      "p95_abs_rad": 0.1182212233543396,
+      "max_abs_rad": 0.9458972811698914
+    },
+    "right_ankle_pitch_joint": {
+      "mean_abs_rad": 0.037950772792100906,
+      "rmse_rad": 0.05974705517292023,
+      "p95_abs_rad": 0.11391609907150269,
+      "max_abs_rad": 0.7512669563293457
+    },
+    "left_hip_roll_joint": {
+      "mean_abs_rad": 0.028632378205657005,
+      "rmse_rad": 0.04585273936390877,
+      "p95_abs_rad": 0.09201138466596603,
+      "max_abs_rad": 0.6081396341323853
+    },
+    "right_hip_roll_joint": {
+      "mean_abs_rad": 0.028970295563340187,
+      "rmse_rad": 0.045358266681432724,
+      "p95_abs_rad": 0.0882871001958847,
+      "max_abs_rad": 0.663091778755188
+    },
+    "left_hip_yaw_joint": {
+      "mean_abs_rad": 0.02783483825623989,
+      "rmse_rad": 0.04067844897508621,
+      "p95_abs_rad": 0.0772169679403305,
+      "max_abs_rad": 0.6571676731109619
+    },
+    "right_hip_yaw_joint": {
+      "mean_abs_rad": 0.026667308062314987,
+      "rmse_rad": 0.04245463386178017,
+      "p95_abs_rad": 0.08422857522964478,
+      "max_abs_rad": 0.7389198541641235
+    }
+  },
+  "validation_target_error": {
+    "all_joints": {
+      "mean_abs_rad": 0.028457986190915108,
+      "rmse_rad": 0.047653354704380035,
+      "p95_abs_rad": 0.09282631427049637,
+      "max_abs_rad": 0.8347445130348206
+    },
+    "hips": {
+      "mean_abs_rad": 0.031060440465807915,
+      "rmse_rad": 0.04992087930440903,
+      "p95_abs_rad": 0.1003073900938034,
+      "max_abs_rad": 0.6339098215103149
+    },
+    "knees": {
+      "mean_abs_rad": 0.026451731100678444,
+      "rmse_rad": 0.04483262076973915,
+      "p95_abs_rad": 0.08705410361289978,
+      "max_abs_rad": 0.678783118724823
+    },
+    "ankles": {
+      "mean_abs_rad": 0.029283182695508003,
+      "rmse_rad": 0.05175786092877388,
+      "p95_abs_rad": 0.09583619236946106,
+      "max_abs_rad": 0.8294804096221924
+    },
+    "upper_body": {
+      "mean_abs_rad": 0.027103165164589882,
+      "rmse_rad": 0.045268263667821884,
+      "p95_abs_rad": 0.08770399540662766,
+      "max_abs_rad": 0.8347445130348206
+    },
+    "left_ankle_pitch_joint": {
+      "mean_abs_rad": 0.0393512062728405,
+      "rmse_rad": 0.0668511763215065,
+      "p95_abs_rad": 0.136188343167305,
+      "max_abs_rad": 0.6276963949203491
+    },
+    "right_ankle_pitch_joint": {
+      "mean_abs_rad": 0.04051365703344345,
+      "rmse_rad": 0.0664515495300293,
+      "p95_abs_rad": 0.1258995682001114,
+      "max_abs_rad": 0.8294804096221924
+    },
+    "left_hip_roll_joint": {
+      "mean_abs_rad": 0.03140099346637726,
+      "rmse_rad": 0.05240090191364288,
+      "p95_abs_rad": 0.10782068967819214,
+      "max_abs_rad": 0.48515453934669495
+    },
+    "right_hip_roll_joint": {
+      "mean_abs_rad": 0.03105323389172554,
+      "rmse_rad": 0.04938662424683571,
+      "p95_abs_rad": 0.09797073155641556,
+      "max_abs_rad": 0.4651198983192444
+    },
+    "left_hip_yaw_joint": {
+      "mean_abs_rad": 0.030310068279504776,
+      "rmse_rad": 0.04437413439154625,
+      "p95_abs_rad": 0.08857415616512299,
+      "max_abs_rad": 0.5263693928718567
+    },
+    "right_hip_yaw_joint": {
+      "mean_abs_rad": 0.0288980882614851,
+      "rmse_rad": 0.04708503559231758,
+      "p95_abs_rad": 0.095171257853508,
+      "max_abs_rad": 0.5471826791763306
+    }
+  },
+  "observation_ambiguity": {
+    "samples": 2048,
+    "nearest_observation_distance_mean": 0.9358485341072083,
+    "nearest_teacher_target_rmse_rad": 0.03900283947587013,
+    "nearest_teacher_target_p95_abs_rad": 0.07329179346561432
+  },
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round1.pt",
+  "checkpoint_metadata": {
+    "dagger_dataset_sha256": "ae3b5429f05b80a5016e76dea40dda9b8e2a95fee2426a50912d02baac1d0e10",
+    "dagger_dataset_content_sha256": "a76bea495c7c3528b6d91ae8f7d2d217304762b8dd295908c9b4a5cf85161292",
+    "dagger_dataset_sample_count": 51200,
+    "dagger_collection_round": 1
+  }
+}

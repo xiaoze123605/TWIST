@@ -17,7 +17,9 @@ def main():
     parser.add_argument('--model', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--steps', type=int, default=1000)
-    parser.add_argument('--zero-latent', action='store_true', help='Inference-only dynamics conditioning ablation')
+    latent = parser.add_mutually_exclusive_group()
+    latent.add_argument('--zero-latent', action='store_true', help='Inference-only dynamics conditioning ablation')
+    latent.add_argument('--shuffled-latent', action='store_true', help='Shuffle latent vectors across environments')
     custom, remaining = parser.parse_known_args()
     if custom.steps < 1:
         raise ValueError('steps must be positive')
@@ -31,6 +33,7 @@ def main():
     from legged_gym.gym_utils import get_args
     from rsl_rl.modules.dynamics_tracker import DynamicsTrackerActorCritic
     from rsl_rl.modules.dynamics_tracker_runtime import DeploymentPolicy
+    from rsl_rl.datasets.dynamics_dagger_buffer import build_actor_input
     args = get_args()
     if not args.task.startswith('g1_dynamics_tracker'):
         raise ValueError('requires a dynamics tracker task')
@@ -67,8 +70,10 @@ def main():
     with torch.no_grad():
         for step in range(custom.steps):
             obs = env.get_observations()
-            raw = ac(obs)
-            torch.testing.assert_close(deployment(obs), env.target_transform(raw, env.current_reference[:,8:31]))
+            raw = (ac.actor(build_actor_input(obs, ac, 'shuffled'))
+                   if custom.shuffled_latent else ac(obs))
+            if not custom.shuffled_latent:
+                torch.testing.assert_close(deployment(obs), env.target_transform(raw, env.current_reference[:,8:31]))
             _, _, _, done, info = env.step(raw)
             first_done = done.bool() & ~first_end
             first_steps[first_done] = step + 1
@@ -97,6 +102,7 @@ def main():
                   motion_file=env.cfg.motion.motion_file, seed=env.cfg.seed,
                   frames=samples, noise=False, resets=totals['resets'],
                   latent_enabled=ac.use_dynamics_latent, zero_latent_ablation=custom.zero_latent,
+                  shuffled_latent_ablation=custom.shuffled_latent,
                   physical_failures=totals['physical_failures'],
                   motion_completions=totals['motion_completions'], timeouts=totals['timeouts'],
                   joint_rmse_rad=(totals['joint_squared']/samples/23)**.5,
@@ -107,7 +113,7 @@ def main():
                   first_episode_duration_s=(first_steps.float()*env.dt).cpu().tolist(),
                   failure_reason_counts=reason_counts,
                   first_failure_snapshots=first_failure_snapshots,
-                  scripted_action_parity=True)
+                  scripted_action_parity=(None if custom.shuffled_latent else True))
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))

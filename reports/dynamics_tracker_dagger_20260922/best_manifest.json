@@ -1,0 +1,147 @@
+{
+  "priority": [
+    "completion_rate",
+    "mean_duration_s",
+    "min_root_height_rmse_m",
+    "min_joint_rmse_rad"
+  ],
+  "selected": {
+    "name": "round5",
+    "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round5.pt",
+    "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round5_eval.json",
+    "metrics": {
+      "completion_rate": 1.0,
+      "mean_duration_s": 7.62000036239624,
+      "root_height_rmse_m": 0.02425579035081517,
+      "joint_rmse_rad": 0.12528228641309752
+    },
+    "selection_key": [
+      1.0,
+      7.62000036239624,
+      -0.02425579035081517,
+      -0.12528228641309752
+    ]
+  },
+  "candidates": [
+    {
+      "name": "round0",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round0.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round0_eval.json",
+      "metrics": {
+        "completion_rate": 0.0,
+        "mean_duration_s": 1.115000069141388,
+        "root_height_rmse_m": 0.07205838646813752,
+        "joint_rmse_rad": 0.15580912765996002
+      },
+      "selection_key": [
+        0.0,
+        1.115000069141388,
+        -0.07205838646813752,
+        -0.15580912765996002
+      ]
+    },
+    {
+      "name": "round1",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round1.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round1_eval.json",
+      "metrics": {
+        "completion_rate": 0.0,
+        "mean_duration_s": 0.8550000488758087,
+        "root_height_rmse_m": 0.06486630493534346,
+        "joint_rmse_rad": 0.1913771789286222
+      },
+      "selection_key": [
+        0.0,
+        0.8550000488758087,
+        -0.06486630493534346,
+        -0.1913771789286222
+      ]
+    },
+    {
+      "name": "round2",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round2.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round2_eval.json",
+      "metrics": {
+        "completion_rate": 0.0,
+        "mean_duration_s": 0.8800000548362732,
+        "root_height_rmse_m": 0.06555634334948181,
+        "joint_rmse_rad": 0.2265415098140992
+      },
+      "selection_key": [
+        0.0,
+        0.8800000548362732,
+        -0.06555634334948181,
+        -0.2265415098140992
+      ]
+    },
+    {
+      "name": "round3",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round3.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round3_eval.json",
+      "metrics": {
+        "completion_rate": 0.0,
+        "mean_duration_s": 1.4325000941753387,
+        "root_height_rmse_m": 0.05504776658150276,
+        "joint_rmse_rad": 0.17827168683292496
+      },
+      "selection_key": [
+        0.0,
+        1.4325000941753387,
+        -0.05504776658150276,
+        -0.17827168683292496
+      ]
+    },
+    {
+      "name": "round4",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round4.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round4_eval.json",
+      "metrics": {
+        "completion_rate": 0.0,
+        "mean_duration_s": 1.73250013589859,
+        "root_height_rmse_m": 0.06123061020356904,
+        "joint_rmse_rad": 0.1513178336493623
+      },
+      "selection_key": [
+        0.0,
+        1.73250013589859,
+        -0.06123061020356904,
+        -0.1513178336493623
+      ]
+    },
+    {
+      "name": "round5",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round5.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round5_eval.json",
+      "metrics": {
+        "completion_rate": 1.0,
+        "mean_duration_s": 7.62000036239624,
+        "root_height_rmse_m": 0.02425579035081517,
+        "joint_rmse_rad": 0.12528228641309752
+      },
+      "selection_key": [
+        1.0,
+        7.62000036239624,
+        -0.02425579035081517,
+        -0.12528228641309752
+      ]
+    },
+    {
+      "name": "round6_latent",
+      "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/round6_latent.pt",
+      "evaluation": "/home/hank/TWIST\uff08anyadapter\uff09/reports/dynamics_tracker_dagger_20260922/round6_eval_normal.json",
+      "metrics": {
+        "completion_rate": 0.25,
+        "mean_duration_s": 3.5500002056360245,
+        "root_height_rmse_m": 0.042502469940461925,
+        "joint_rmse_rad": 0.14946134159416297
+      },
+      "selection_key": [
+        0.25,
+        3.5500002056360245,
+        -0.042502469940461925,
+        -0.14946134159416297
+      ]
+    }
+  ],
+  "output_checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/dynamics_tracker/dagger_b3_cumulative/best.pt"
+}
