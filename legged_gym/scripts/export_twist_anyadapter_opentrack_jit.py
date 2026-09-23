@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 import sys
 
@@ -59,17 +60,29 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--adapter-gain", type=float, default=1.0,
+                        help="Layer-adapter strength in [0,1]; zero exactly recovers TWIST.")
     args = parser.parse_args()
-    eager = DeployActor(build_actor(args.checkpoint)).eval()
+    if not math.isfinite(args.adapter_gain) or not 0.0 <= args.adapter_gain <= 1.0:
+        parser.error('--adapter-gain must be finite and in [0,1]')
+    actor = build_actor(args.checkpoint)
+    actor.layerwise_actor.adapter_gain = args.adapter_gain
+    eager = DeployActor(actor).eval()
     sample = torch.randn(2, POLICY_OBS_DIM)
     scripted = torch.jit.trace(eager, sample)
     error = float((eager(sample) - scripted(sample)).abs().max())
     if error >= 1e-5:
         raise RuntimeError(f"eager/JIT parity failed: max_abs_error={error:.3e}")
+    if args.adapter_gain == 0.0:
+        base = torch.jit.load(BASE_JIT, map_location='cpu').eval()
+        base_error = float((eager(sample) - base(sample[:, :BASE_OBS_DIM])).abs().max())
+        if base_error >= 2e-5:
+            raise RuntimeError(f"zero-gain/base parity failed: max_abs_error={base_error:.3e}")
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     scripted.save(str(output))
-    print(f"saved {output}; eager/JIT max_abs_error={error:.3e}")
+    print(f"saved {output}; adapter_gain={args.adapter_gain:g}; "
+          f"eager/JIT max_abs_error={error:.3e}")
 
 
 if __name__ == "__main__":
