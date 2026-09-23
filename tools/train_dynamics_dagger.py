@@ -11,10 +11,18 @@ sys.path[:0] = [str(ROOT), str(ROOT / "legged_gym"), str(ROOT / "rsl_rl"), str(R
 
 
 def error_metrics(error):
+    import numpy as np
     import torch
     absolute = error.abs().flatten()
-    return dict(mean_abs_rad=float(absolute.mean()), rmse_rad=float(error.square().mean().sqrt()),
-                p95_abs_rad=float(torch.quantile(absolute, .95)), max_abs_rad=float(absolute.max()))
+    # torch.quantile rejects tensors above 2**24 elements on this PyTorch
+    # build. Full-corpus DAgger produces tens of millions of joint errors;
+    # NumPy's partition-based implementation handles that exact percentile.
+    mean_abs = float(absolute.mean())
+    rmse = float(error.square().mean().sqrt())
+    maximum = float(absolute.max())
+    p95 = float(np.quantile(absolute.numpy(), .95, overwrite_input=True))
+    return dict(mean_abs_rad=mean_abs, rmse_rad=rmse,
+                p95_abs_rad=p95, max_abs_rad=maximum)
 
 
 def main():
@@ -55,7 +63,7 @@ def main():
                            "g1_dynamics_tracker_universal"):
         raise ValueError("DAgger training requires a wide/universal DynamicsTracker task")
     torch.manual_seed(custom.seed)
-    template = torch.load(custom.template_checkpoint, map_location="cpu")
+    template = torch.load(custom.template_checkpoint, map_location="cpu", weights_only=False)
     train_cfg = copy.deepcopy(template["train_cfg"])
     use_latent = custom.task == "g1_dynamics_tracker_adaptive_wide"
     train_cfg["policy"]["use_dynamics_latent"] = use_latent
@@ -69,7 +77,8 @@ def main():
         deployment_spec["observation_dim"], template["critic_dim"], 23,
         **train_cfg["policy"]).to(custom.rl_device)
     if custom.init_checkpoint:
-        initial = torch.load(custom.init_checkpoint, map_location=custom.rl_device)
+        initial = torch.load(custom.init_checkpoint, map_location=custom.rl_device,
+                             weights_only=False)
         old_spec = dict(initial["deployment_spec"])
         old_spec.pop("use_dynamics_latent", None)
         new_spec = dict(deployment_spec)
@@ -81,7 +90,8 @@ def main():
             with torch.no_grad():
                 actor_critic.actor[0].weight[:, -actor_critic.latent_dim:] = 0
     if custom.dynamics_checkpoint:
-        dynamics = torch.load(custom.dynamics_checkpoint, map_location=custom.rl_device)
+        dynamics = torch.load(custom.dynamics_checkpoint, map_location=custom.rl_device,
+                              weights_only=False)
         state = dynamics["model_state_dict"]
         actor_critic.history_encoder.load_state_dict({
             key[len("history_encoder."):]: value for key, value in state.items()
@@ -128,6 +138,22 @@ def main():
             optimizer.step()
             losses.append(float(loss.detach()))
         epoch_losses.append(sum(losses)/len(losses))
+
+    # Save the trained weights before diagnostic passes over the full replay.
+    # A reporting failure must never discard hours of completed optimization.
+    dataset_file_sha = DynamicsDaggerBuffer.file_sha256(custom.dataset)
+    checkpoint_metadata = dict(
+        dagger_dataset_sha256=dataset_file_sha,
+        dagger_dataset_content_sha256=replay.content_sha256(),
+        dagger_dataset_sample_count=len(replay), dagger_collection_round=latest_round,
+        dynamics_checkpoint=(str(Path(custom.dynamics_checkpoint).resolve())
+                             if custom.dynamics_checkpoint else None))
+    output = Path(custom.output_checkpoint)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(dict(model_state_dict=actor_critic.state_dict(),
+                    optimizer_state_dict=optimizer.state_dict(), wm_optimizer_state_dict={},
+                    iter=0, train_cfg=train_cfg, deployment_spec=deployment_spec,
+                    critic_dim=template["critic_dim"], metadata=checkpoint_metadata), output)
 
     actor_critic.eval()
 
@@ -192,19 +218,6 @@ def main():
             validation_source_error[source_name] = dict(samples=int(ids.numel()),
                                                          all_joints=metrics["all_joints"])
 
-    dataset_file_sha = DynamicsDaggerBuffer.file_sha256(custom.dataset)
-    checkpoint_metadata = dict(
-        dagger_dataset_sha256=dataset_file_sha,
-        dagger_dataset_content_sha256=replay.content_sha256(),
-        dagger_dataset_sample_count=len(replay), dagger_collection_round=latest_round,
-        dynamics_checkpoint=(str(Path(custom.dynamics_checkpoint).resolve())
-                             if custom.dynamics_checkpoint else None))
-    output = Path(custom.output_checkpoint)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(dict(model_state_dict=actor_critic.state_dict(),
-                    optimizer_state_dict=optimizer.state_dict(), wm_optimizer_state_dict={},
-                    iter=0, train_cfg=train_cfg, deployment_spec=deployment_spec,
-                    critic_dim=template["critic_dim"], metadata=checkpoint_metadata), output)
     sampled_total = int(sampled_source.sum())
     report = dict(dataset=str(Path(custom.dataset).resolve()), dataset_sha256=dataset_file_sha,
                   dataset_sample_count=len(replay), collection_round=latest_round,

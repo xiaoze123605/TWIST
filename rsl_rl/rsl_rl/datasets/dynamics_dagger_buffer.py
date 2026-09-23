@@ -76,7 +76,7 @@ class DynamicsDaggerBuffer:
 
     @classmethod
     def load(cls, path):
-        payload = torch.load(path, map_location="cpu")
+        payload = torch.load(path, map_location="cpu", weights_only=False)
         if payload.get("version") != cls.version:
             raise ValueError("unsupported DAgger replay version")
         replay = cls(payload["tensors"], payload["metadata"])
