@@ -20,9 +20,13 @@ Run on an otherwise idle RTX 4090:
 
 ```bash
 cd '/home/hank/TWIST（anyadapter）'
-NUM_ENVS=2048 PPO_ENVS=4096 \
+NUM_ENVS=2048 PPO_ENVS=4096 MAX_ITERATIONS=30000 \
   bash tools/run_universal_tracker_training.sh
 ```
+
+The production default is 4,096 PPO environments and 30,000 PPO iterations,
+with a checkpoint every 100 iterations. `MAX_ITERATIONS` is an upper bound;
+validation checkpoints should still determine the deployed model.
 
 For a short pipeline preflight, use
 `NUM_ENVS=256 PPO_ENVS=256 COVERAGE_STEPS=10`; this deliberately skips complete

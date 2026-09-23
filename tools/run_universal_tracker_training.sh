@@ -9,6 +9,7 @@ MOTIONS="$ROOT/legged_gym/motion_data_configs/wm_dtera_prepared_20260916_local/t
 RUN_ROOT="${1:-$ROOT/legged_gym/logs/dynamics_tracker/universal_$(date +%Y%m%d_%H%M%S)}"
 NUM_ENVS="${NUM_ENVS:-2048}"
 PPO_ENVS="${PPO_ENVS:-4096}"
+MAX_ITERATIONS="${MAX_ITERATIONS:-30000}"
 MOTION_COUNT="$("$PYTHON" -c 'import sys,yaml; print(len(yaml.safe_load(open(sys.argv[1]))["motions"]))' "$MOTIONS")"
 COVERAGE_SEGMENT_STEPS="${COVERAGE_SEGMENT_STEPS:-50}"
 COVERAGE_BATCHES="$(((MOTION_COUNT + NUM_ENVS - 1) / NUM_ENVS))"
@@ -78,7 +79,7 @@ fi
   --task g1_dynamics_tracker_universal \
   --output "$RUN_ROOT/ppo" \
   --warm-start "$RUN_ROOT/dagger/model_round1.pt" \
-  --max_iterations 10000 --num_envs "$PPO_ENVS" --seed 202 \
+  --max_iterations "$MAX_ITERATIONS" --num_envs "$PPO_ENVS" --seed 202 \
   --save-interval 100 --policy-learning-rate 0.00005 \
   --disable-world-model --headless 2>&1 | tee "$RUN_ROOT/ppo_console.log"
 
