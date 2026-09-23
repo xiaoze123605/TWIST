@@ -33,7 +33,10 @@ against the base JIT on the same held-out motions, motion server settings,
 MuJoCo model, and seed. Include easy, locomotion, and dynamic motions. A
 checkpoint must improve the aggregate result without a material increase in
 falls or loss of easy-motion stability; iteration count alone is not a
-selection criterion. First assess raw references. The existing high-level
+selection criterion. The exporter supports `--adapter-gain` from 0 to 1:
+gain 0 reproduces the frozen baseline exactly; intermediate gains permit a
+validation-only strength sweep without retraining. First assess raw references.
+The existing high-level
 `--reference-mode wm` path can then be tested as a separate ablation; do not
 assume the reference model improves clean mocap inputs.
 
