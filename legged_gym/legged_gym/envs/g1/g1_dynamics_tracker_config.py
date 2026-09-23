@@ -100,6 +100,38 @@ class G1DynamicsTrackerWideCfg(G1DynamicsTrackerCfg):
         target_scales = [0.6, 0.5, 0.8, 0.6, 0.8, 0.35] * 2 + [0.4, 0.3, 0.3] + [0.6] * 8
 
 
+class G1DynamicsTrackerUniversalCfg(G1DynamicsTrackerWideCfg):
+    """Nominal-physics training on the complete audited motion train split."""
+    class env(G1DynamicsTrackerWideCfg.env):
+        # The command selected at t is applied over [t, t+dt]. Matching the
+        # original TWIST student/teacher at t+dt removes a one-step phase lag.
+        tar_obs_steps = [1]
+
+    class motion(G1DynamicsTrackerWideCfg.motion):
+        motion_file = str(Path(__file__).resolve().parents[3] /
+                          "motion_data_configs/wm_dtera_prepared_20260916_local/train.yaml")
+        # Reweight sampling toward clips with low completion while retaining a
+        # non-zero probability for every clip. This is the curriculum used by
+        # the original TWIST environment, now enabled for the universal tracker.
+        motion_curriculum = True
+        motion_curriculum_gamma = 0.01
+
+
+class G1DynamicsTrackerUniversalRobustCfg(G1DynamicsTrackerRobustCfg):
+    """Full-corpus system-identification/domain-randomization fine tuning."""
+    class env(G1DynamicsTrackerRobustCfg.env):
+        tar_obs_steps = [1]
+
+    class control(G1DynamicsTrackerRobustCfg.control):
+        target_scales = G1DynamicsTrackerWideCfg.control.target_scales
+
+    class motion(G1DynamicsTrackerRobustCfg.motion):
+        motion_file = str(Path(__file__).resolve().parents[3] /
+                          "motion_data_configs/wm_dtera_prepared_20260916_local/train.yaml")
+        motion_curriculum = True
+        motion_curriculum_gamma = 0.01
+
+
 class G1DynamicsTrackerCfgPPO(BaseConfig):
     seed = 42
     class runner:

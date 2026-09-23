@@ -27,6 +27,8 @@ def main():
                         help="Defines the existing actor/deployment contract; weights are ignored unless also used as --init-checkpoint")
     parser.add_argument("--dynamics-checkpoint",
                         help="Optional trained History Encoder/WM weights; actor weights are never loaded from it")
+    parser.add_argument("--reference-time-offset-steps", type=int, default=None,
+                        help="Override the template deployment reference offset")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--samples-per-epoch", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=1024)
@@ -49,8 +51,9 @@ def main():
 
     if remaining:
         raise ValueError("unknown DAgger trainer arguments: " + " ".join(remaining))
-    if custom.task not in ("g1_dynamics_tracker_wide", "g1_dynamics_tracker_adaptive_wide"):
-        raise ValueError("DAgger training requires a wide DynamicsTracker task")
+    if custom.task not in ("g1_dynamics_tracker_wide", "g1_dynamics_tracker_adaptive_wide",
+                           "g1_dynamics_tracker_universal"):
+        raise ValueError("DAgger training requires a wide/universal DynamicsTracker task")
     torch.manual_seed(custom.seed)
     template = torch.load(custom.template_checkpoint, map_location="cpu")
     train_cfg = copy.deepcopy(template["train_cfg"])
@@ -58,6 +61,10 @@ def main():
     train_cfg["policy"]["use_dynamics_latent"] = use_latent
     deployment_spec = copy.deepcopy(template["deployment_spec"])
     deployment_spec["use_dynamics_latent"] = use_latent
+    if custom.reference_time_offset_steps is not None:
+        if custom.reference_time_offset_steps < 0:
+            raise ValueError("reference time offset must be non-negative")
+        deployment_spec["reference_time_offset_steps"] = custom.reference_time_offset_steps
     actor_critic = DynamicsTrackerActorCritic(
         deployment_spec["observation_dim"], template["critic_dim"], 23,
         **train_cfg["policy"]).to(custom.rl_device)

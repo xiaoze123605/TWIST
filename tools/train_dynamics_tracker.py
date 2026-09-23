@@ -16,6 +16,10 @@ def main():
     group.add_argument('--warm-start')
     group.add_argument('--resume-checkpoint')
     parser.add_argument('--smoke-test', action='store_true')
+    parser.add_argument('--save-interval', type=int, default=None)
+    parser.add_argument('--policy-learning-rate', type=float, default=None)
+    parser.add_argument('--disable-world-model', action='store_true',
+                        help='Skip the unused WM auxiliary loss for zero-latent Stage-A training')
     custom, remaining = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining
     import isaacgym  # Must precede torch.
@@ -28,6 +32,18 @@ def main():
         raise ValueError('Use --resume-checkpoint with an explicit file')
     args.headless = True
     cfg, training = task_registry.get_cfgs(args.task)
+    if custom.save_interval is not None:
+        if custom.save_interval < 1:
+            raise ValueError('--save-interval must be positive')
+        training.runner.save_interval = custom.save_interval
+    if custom.policy_learning_rate is not None:
+        if custom.policy_learning_rate <= 0:
+            raise ValueError('--policy-learning-rate must be positive')
+        training.algorithm.learning_rate = custom.policy_learning_rate
+    if custom.disable_world_model:
+        if training.policy.use_dynamics_latent:
+            raise ValueError('--disable-world-model is only valid for zero-latent Stage-A')
+        training.algorithm.world_model_loss_coef = 0.0
     if custom.smoke_test:
         if not args.motion_file or not args.num_envs or args.num_envs > 16:
             raise ValueError('Smoke test requires --motion_file and --num_envs <= 16')
@@ -47,6 +63,9 @@ def main():
         runner.load(checkpoint, warm_start=bool(custom.warm_start))
     (output / 'manifest.json').write_text(json.dumps(dict(
         task=args.task, smoke_test=custom.smoke_test, initialization=checkpoint,
+        save_interval=training.runner.save_interval,
+        policy_learning_rate=training.algorithm.learning_rate,
+        world_model_enabled=training.algorithm.world_model_loss_coef > 0,
         environment=class_to_dict(cfg), training=class_to_dict(training),
         input_sha256={str(Path(path).resolve()): hashlib.sha256(Path(path).read_bytes()).hexdigest()
                       for path in [cfg.motion.motion_file] + ([checkpoint] if checkpoint else [])},

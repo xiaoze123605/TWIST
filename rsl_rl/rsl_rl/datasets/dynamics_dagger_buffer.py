@@ -149,8 +149,9 @@ class DynamicsDaggerBuffer:
 
     def stratified_indices(self, candidate_indices, count, latest_round=None,
                            ratios=(0.4, 0.3, 0.3), phase_bins=20,
-                           recovery_steps=(25, 50), recovery_weight=2.0, generator=None):
-        """Sample teacher/history/latest strata with phase balancing.
+                           recovery_steps=(25, 50), recovery_weight=2.0,
+                           motion_balance=True, generator=None):
+        """Sample teacher/history/latest strata with motion/phase balancing.
 
         Failure-adjacent samples receive a modest weight within each phase bin;
         source quotas prevent them from dominating the full replay.
@@ -177,14 +178,32 @@ class DynamicsDaggerBuffer:
             quotas[index] += 1
         sampled = []
         phase = self.tensors["motion_phase"]
+        motion = self.tensors["motion_id"].to(torch.long)
         steps = self.tensors["steps_to_failure"]
         for mask, quota in zip(masks, quotas.tolist()):
             if quota == 0:
                 continue
             pool = candidate_indices[mask]
             bins = (phase[pool] * phase_bins).floor().clamp_max(phase_bins - 1).long()
-            bin_count = torch.bincount(bins, minlength=phase_bins).clamp_min(1)
-            weights = 1.0 / bin_count[bins].float()
+            if motion_balance:
+                # Remap arbitrary stable motion IDs to a compact range, then
+                # balance each (motion, phase) cell. This first equalizes
+                # motions and then phase coverage inside every motion.
+                _, compact_motion = torch.unique(motion[pool], sorted=True,
+                                                 return_inverse=True)
+                cells = compact_motion * phase_bins + bins
+                cell_count = torch.bincount(cells).clamp_min(1)
+                weights = 1.0 / cell_count[cells].float()
+                # The cell term alone gives motions with more occupied bins
+                # more mass. Normalize that residual difference explicitly.
+                unique_cells = torch.unique(cells)
+                occupied = torch.bincount(
+                    torch.div(unique_cells, phase_bins, rounding_mode="floor"),
+                    minlength=int(compact_motion.max()) + 1).clamp_min(1)
+                weights /= occupied[compact_motion].float().clamp_min(1.)
+            else:
+                bin_count = torch.bincount(bins, minlength=phase_bins).clamp_min(1)
+                weights = 1.0 / bin_count[bins].float()
             near_failure = (steps[pool] >= recovery_steps[0]) & (steps[pool] <= recovery_steps[1])
             weights *= torch.where(near_failure, recovery_weight, 1.0)
             draw = torch.multinomial(weights, quota, replacement=quota > pool.numel(),

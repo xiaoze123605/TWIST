@@ -138,6 +138,15 @@ def test_stage_switch_preserves_action_and_resume_rejects_contract(tmp_path):
     class Environment:
         device = 'cpu'
         num_obs, num_privileged_obs, num_actions, num_envs = 6133, 135, 23, 2
+        _motion_ids = torch.zeros(2, dtype=torch.long)
+        motion_difficulty = torch.ones(3)
+        mean_motion_difficulty = torch.tensor(1.)
+        class _MotionLib:
+            _motion_files = ['a.pkl', 'b.pkl', 'c.pkl']
+            @staticmethod
+            def num_motions():
+                return 3
+        _motion_lib = _MotionLib()
         def deployment_spec(self):
             return spec()
     cfg = dict(policy=dict(use_dynamics_latent=False, actor_hidden_dims=[32],
@@ -185,10 +194,11 @@ def test_timeout_bootstraps_terminal_critic_not_reset_state():
     assert alg.dyn_next[0].eq(1).all()
 
 
-def _dagger_round(round_id, source, count=20):
+def _dagger_round(round_id, source, count=20, motions=1):
     return dict(
         actor_input=torch.randn(count, 303), teacher_target=torch.randn(count, 23),
-        motion_id=torch.zeros(count, dtype=torch.long), motion_time=torch.linspace(0, 1, count),
+        motion_id=torch.arange(count, dtype=torch.long).remainder(motions),
+        motion_time=torch.linspace(0, 1, count),
         motion_phase=torch.linspace(0, 1, count),
         episode_id=torch.arange(count, dtype=torch.long) + round_id*100,
         source=torch.full((count,), source, dtype=torch.long),
@@ -219,3 +229,25 @@ def test_cumulative_dagger_replay_and_stratification(tmp_path):
     assert counts.tolist() == [400, 300, 300]
     with pytest.raises(ValueError):
         loaded.append_round(_dagger_round(2, SOURCE_CURRENT_STUDENT), {'round': 2})
+
+
+def test_dagger_motion_and_phase_balancing():
+    replay = DynamicsDaggerBuffer()
+    # Deliberately make motion 0 much more common than motions 1 and 2.
+    tensors = _dagger_round(0, SOURCE_TEACHER, count=120, motions=1)
+    rare = _dagger_round(0, SOURCE_TEACHER, count=20, motions=2)
+    rare['motion_id'] += 1
+    for name in tensors:
+        tensors[name] = torch.cat((tensors[name], rare[name]))
+    replay.append_round(tensors, {'round': 0, 'beta': 1.0})
+    ids = replay.stratified_indices(torch.arange(len(replay)), 6000, phase_bins=5,
+                                    recovery_weight=1.0,
+                                    generator=torch.Generator().manual_seed(11))
+    motion_counts = torch.bincount(replay.tensors['motion_id'][ids], minlength=3).float()
+    assert torch.all((motion_counts / motion_counts.mean() - 1).abs() < .12)
+    for motion_id in range(3):
+        selected = ids[replay.tensors['motion_id'][ids] == motion_id]
+        bins = (replay.tensors['motion_phase'][selected] * 5).floor().clamp_max(4).long()
+        present = torch.bincount(bins, minlength=5).float()
+        if torch.all(present > 0):
+            assert torch.all((present / present.mean() - 1).abs() < .25)

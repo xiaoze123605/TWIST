@@ -17,9 +17,12 @@ def main():
     parser.add_argument("--round", type=int, required=True)
     parser.add_argument("--beta", type=float, required=True)
     parser.add_argument("--steps", type=int, default=400)
+    parser.add_argument("--coverage-segment-steps", type=int, default=0,
+                        help="Force a new ordered motion batch at this interval; 0 uses normal sampling")
     parser.add_argument("--report", required=True)
     custom, remaining = parser.parse_known_args()
-    if custom.round < 0 or custom.steps < 1 or not 0 <= custom.beta <= 1:
+    if (custom.round < 0 or custom.steps < 1 or custom.coverage_segment_steps < 0
+            or not 0 <= custom.beta <= 1):
         raise ValueError("invalid round, steps or beta")
     if custom.beta < 1 and not custom.student_checkpoint:
         raise ValueError("student checkpoint required when beta < 1")
@@ -39,19 +42,29 @@ def main():
     replay = DynamicsDaggerBuffer.load(dataset_path) if dataset_path.exists() else DynamicsDaggerBuffer()
 
     args = get_args()
-    if args.task not in ("g1_dynamics_tracker_wide", "g1_dynamics_tracker_adaptive_wide"):
-        raise ValueError("DAgger collection requires a wide DynamicsTracker task")
+    if args.task not in ("g1_dynamics_tracker_wide", "g1_dynamics_tracker_adaptive_wide",
+                         "g1_dynamics_tracker_universal"):
+        raise ValueError("DAgger collection requires a wide/universal DynamicsTracker task")
     args.headless = True
     cfg, training_cfg = task_registry.get_cfgs(args.task)
     cfg.noise.add_noise = False
     cfg.env.randomize_start_pos = False
     cfg.domain_rand.domain_rand_general = False
+    cfg.motion.motion_curriculum = False
     for name in ("randomize_gravity", "randomize_friction", "randomize_base_mass",
                  "randomize_base_com", "push_robots", "push_end_effector",
                  "randomize_motor", "action_delay", "randomize_mimic_obs"):
         setattr(cfg.domain_rand, name, False)
     env, _ = task_registry.make_env(args.task, args=args, env_cfg=cfg)
     env.dagger_randomize_phase = True
+    motion_id_to_path = {
+        str(index): str(Path(path).resolve())
+        for index, path in enumerate(env._motion_lib._motion_files)
+    }
+    existing_mapping = replay.metadata.get("motion_id_to_path")
+    if existing_mapping is not None and existing_mapping != motion_id_to_path:
+        raise ValueError("motion ID mapping changed; use a new replay or the original motion manifest")
+    replay.metadata["motion_id_to_path"] = motion_id_to_path
     teacher = torch.jit.load(custom.teacher, map_location=env.device).eval()
     runner = None
     if custom.student_checkpoint:
@@ -63,7 +76,30 @@ def main():
         runner.alg.actor_critic.eval()
 
     all_ids = torch.arange(env.num_envs, device=env.device)
-    env.reset_idx(all_ids)
+    coverage_order = None
+    coverage_cursor = 0
+    coverage_cycles = 0
+
+    def next_coverage_ids(count):
+        nonlocal coverage_order, coverage_cursor, coverage_cycles
+        chunks = []
+        while count:
+            if coverage_order is None or coverage_cursor == coverage_order.numel():
+                generator = torch.Generator(device=env.device)
+                generator.manual_seed(int(env.cfg.seed) + coverage_cycles * 1009)
+                coverage_order = torch.randperm(
+                    env._motion_lib.num_motions(), generator=generator, device=env.device)
+                coverage_cursor = 0
+                coverage_cycles += 1
+            take = min(count, coverage_order.numel() - coverage_cursor)
+            chunks.append(coverage_order[coverage_cursor:coverage_cursor + take])
+            coverage_cursor += take
+            count -= take
+        return torch.cat(chunks)
+
+    initial_motion_ids = (next_coverage_ids(env.num_envs)
+                          if custom.coverage_segment_steps else None)
+    env.reset_idx(all_ids, motion_ids=initial_motion_ids)
     env.base_quat[:] = env.root_states[:, 3:7]
     env.base_lin_vel[:] = quat_rotate_inverse(env.base_quat, env.root_states[:, 7:10])
     env.base_ang_vel[:] = quat_rotate_inverse(env.base_quat, env.root_states[:, 10:13])
@@ -104,7 +140,7 @@ def main():
         return torch.cat((mimic, proprio), -1)
 
     with torch.no_grad():
-        for _ in range(custom.steps):
+        for step in range(custom.steps):
             observation = env.get_observations()
             actor_input = build_actor_input(observation, runner.alg.actor_critic if runner else
                                              _zero_latent_actor(env, training_cfg, task_registry, args))
@@ -152,7 +188,19 @@ def main():
             tensors["failure_margin_m"].append(margin.cpu())
             teacher_history = torch.cat((teacher_history[:, 1:], legacy_current[:, None]), 1)
             previous_executed_legacy_action.copy_(executed_legacy)
-            reset_ids = done.nonzero(as_tuple=False).flatten()
+            forced_coverage_reset = (custom.coverage_segment_steps > 0 and
+                                     (step + 1) % custom.coverage_segment_steps == 0 and
+                                     step + 1 < custom.steps)
+            if forced_coverage_reset:
+                reset_ids = all_ids
+                env.reset_idx(reset_ids, motion_ids=next_coverage_ids(env.num_envs))
+                env.base_quat[:] = env.root_states[:, 3:7]
+                env.base_lin_vel[:] = quat_rotate_inverse(env.base_quat, env.root_states[:, 7:10])
+                env.base_ang_vel[:] = quat_rotate_inverse(env.base_quat, env.root_states[:, 10:13])
+                env.roll, env.pitch, env.yaw = euler_from_quaternion(env.base_quat)
+                env.compute_observations()
+            else:
+                reset_ids = done.nonzero(as_tuple=False).flatten()
             if reset_ids.numel():
                 new_current = legacy_current_observation()
                 teacher_history[reset_ids] = new_current[reset_ids, None]
@@ -183,12 +231,17 @@ def main():
                           seed=int(env.cfg.seed), steps=custom.steps,
                           student_checkpoint=(str(Path(custom.student_checkpoint).resolve())
                                               if custom.student_checkpoint else None),
-                          random_phase=True)
+                          random_phase=True, motion_id_to_path=motion_id_to_path)
+    round_metadata["coverage_segment_steps"] = custom.coverage_segment_steps
+    round_metadata["unique_motions_sampled"] = int(stacked["motion_id"].unique().numel())
     replay.append_round(stacked, round_metadata)
     file_sha = replay.save(dataset_path)
     report = dict(dataset=str(dataset_path.resolve()), dataset_sha256=file_sha,
                   content_sha256=replay.content_sha256(), sample_count=len(replay),
                   source_counts=replay.source_counts(), latest_round=round_metadata,
+                  motion_id_to_path=motion_id_to_path,
+                  motion_counts={str(int(motion_id)): int((stacked["motion_id"] == motion_id).sum())
+                                 for motion_id in stacked["motion_id"].unique(sorted=True)},
                   phase_min=float(stacked["motion_phase"].min()),
                   phase_max=float(stacked["motion_phase"].max()),
                   failure_adjacent_samples=int((stacked["steps_to_failure"] >= 0).sum()))
@@ -197,7 +250,12 @@ def main():
         raise FileExistsError(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2))
-    print(json.dumps(report, indent=2))
+    console_report = dict(report)
+    console_report['motion_id_to_path'] = f'{len(motion_id_to_path)} entries (stored in report)'
+    console_report['latest_round'] = dict(round_metadata)
+    console_report['latest_round']['motion_id_to_path'] = (
+        f'{len(motion_id_to_path)} entries (stored in report)')
+    print(json.dumps(console_report, indent=2))
 
 
 _CACHED_ACTOR = None

@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--teacher", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--steps", type=int, default=400)
+    parser.add_argument("--episode-length-s", type=float, default=120.0)
     custom, remaining = parser.parse_known_args()
     output = Path(custom.output)
     if output.exists():
@@ -31,6 +32,7 @@ def main():
     args.headless = True
     cfg, _ = task_registry.get_cfgs(args.task)
     cfg.noise.add_noise = False
+    cfg.env.episode_length_s = custom.episode_length_s
     cfg.env.randomize_start_pos = False
     cfg.domain_rand.domain_rand_general = False
     for name in ("randomize_gravity", "randomize_friction", "randomize_base_mass",
@@ -54,6 +56,7 @@ def main():
     success = torch.zeros_like(ended)
     durations = torch.full((env.num_envs,), custom.steps, dtype=torch.long, device=env.device)
     failures = completions = 0
+    per_env_failures = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
     def legacy_observation():
         times = env._get_motion_times() + env.dt
@@ -90,6 +93,7 @@ def main():
             success[first] = info["motion_completed"][first]
             ended |= done.bool()
             failures += int(info["physical_failure"].sum())
+            per_env_failures += info["physical_failure"].long()
             completions += int(info["motion_completed"].sum())
             history = torch.cat((history[:, 1:], current[:, None]), 1)
             previous_action.copy_((executed-env.default_dof_pos_all)/env.cfg.control.action_scale)
@@ -98,12 +102,24 @@ def main():
                 new_current = legacy_observation()
                 history[reset_ids] = new_current[reset_ids, None]
                 previous_action[reset_ids] = 0.
+    per_motion = []
+    for motion_id, motion_path in enumerate(env._motion_lib._motion_files):
+        ids = (env._eval_scenario_motion_ids == motion_id).nonzero(as_tuple=False).flatten()
+        if ids.numel():
+            per_motion.append(dict(
+                motion_id=motion_id, motion_path=str(Path(motion_path).resolve()),
+                environments=int(ids.numel()),
+                first_episode_completion_rate=float(success[ids].float().mean()),
+                first_episode_mean_duration_s=float(durations[ids].float().mean() * env.dt),
+                first_episode_duration_s=(durations[ids].float() * env.dt).cpu().tolist(),
+                first_episode_censored=int((~ended[ids]).sum()),
+                physical_failures=int(per_env_failures[ids].sum())))
     report = dict(task=args.task, teacher=str(Path(custom.teacher).resolve()),
                   motion_file=env.cfg.motion.motion_file,
                   first_episode_completion_rate=float(success.float().mean()),
                   first_episode_duration_s=(durations.float()*env.dt).cpu().tolist(),
                   physical_failures=failures, motion_completions=completions,
-                  first_episode_censored=int((~ended).sum()))
+                  first_episode_censored=int((~ended).sum()), per_motion=per_motion)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))

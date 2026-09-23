@@ -1,6 +1,7 @@
 """Isolated runner with explicit checkpoint/config/deployment contracts."""
 import json
 import math
+import hashlib
 from pathlib import Path
 
 import torch
@@ -33,6 +34,11 @@ class DynamicsTrackerRunner:
                               [env.num_privileged_obs], [env.num_actions])
         self.current_learning_iteration = 0
         self.extra_checkpoint_metadata = {}
+        self.motion_coverage = torch.zeros(
+            self.env._motion_lib.num_motions(), dtype=torch.bool, device=self.device)
+        self.motion_manifest_sha256 = hashlib.sha256('\n'.join(
+            str(Path(path).resolve()) for path in self.env._motion_lib._motion_files
+        ).encode()).hexdigest()
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         if init_at_random_ep_len:
@@ -41,8 +47,12 @@ class DynamicsTrackerRunner:
         self.alg.actor_critic.train()
         for _ in range(num_learning_iterations):
             reward_sum, dones_count = 0., 0
+            physical_failures = motion_completions = timeouts = 0
+            iteration_motion_ids = []
             with torch.no_grad():
                 for _ in range(self.num_steps_per_env):
+                    iteration_motion_ids.append(self.env._motion_ids.clone())
+                    self.motion_coverage[self.env._motion_ids] = True
                     action = self.alg.act(obs, critic, {})
                     obs, critic, reward, done, info = self.env.step(action)
                     if not torch.isfinite(obs).all() or not torch.isfinite(reward).all():
@@ -50,12 +60,23 @@ class DynamicsTrackerRunner:
                     self.alg.process_env_step(reward, done, info)
                     reward_sum += float(reward.mean())
                     dones_count += int(done.sum())
+                    physical_failures += int(info['physical_failure'].sum())
+                    motion_completions += int(info['motion_completed'].sum())
+                    timeouts += int(info['time_outs'].sum())
                 self.alg.compute_returns(critic)
             self.alg.update()
             self.current_learning_iteration += 1
             metrics = dict(self.alg.metrics, iteration=self.current_learning_iteration,
                            mean_reward=reward_sum / self.num_steps_per_env,
-                           terminations=dones_count)
+                           terminations=dones_count,
+                           physical_failures=physical_failures,
+                           motion_completions=motion_completions,
+                           timeouts=timeouts,
+                           motions_seen_iteration=int(torch.unique(
+                               torch.cat(iteration_motion_ids)).numel()),
+                           motions_seen_total=int(self.motion_coverage.sum()),
+                           motion_count=int(self.motion_coverage.numel()),
+                           mean_motion_difficulty=float(self.env.motion_difficulty.mean()))
             if not all(math.isfinite(float(v)) for v in metrics.values()):
                 raise FloatingPointError("non-finite learning metrics")
             print(json.dumps(metrics, sort_keys=True))
@@ -75,6 +96,10 @@ class DynamicsTrackerRunner:
                         iter=self.current_learning_iteration, train_cfg=self.cfg,
                         deployment_spec=self.spec,
                         critic_dim=self.env.num_privileged_obs,
+                        environment_state=dict(
+                            motion_manifest_sha256=self.motion_manifest_sha256,
+                            motion_difficulty=self.env.motion_difficulty.detach().cpu(),
+                            motion_coverage=self.motion_coverage.detach().cpu()),
                         metadata=dict(self.extra_checkpoint_metadata)), path)
 
     def load(self, path, load_optimizer=True, warm_start=False):
@@ -119,6 +144,21 @@ class DynamicsTrackerRunner:
             if load_optimizer:
                 self.alg.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 self.alg.wm_optimizer.load_state_dict(checkpoint["wm_optimizer_state_dict"])
+            environment_state = checkpoint.get('environment_state', {})
+            saved_manifest = environment_state.get('motion_manifest_sha256')
+            if saved_manifest is not None and saved_manifest != self.motion_manifest_sha256:
+                raise ValueError('resume motion manifest/order differs')
+            difficulty = environment_state.get('motion_difficulty')
+            coverage = environment_state.get('motion_coverage')
+            if difficulty is not None:
+                if difficulty.shape != self.env.motion_difficulty.shape:
+                    raise ValueError('resume motion curriculum shape differs')
+                self.env.motion_difficulty.copy_(difficulty.to(self.device))
+                self.env.mean_motion_difficulty = self.env.motion_difficulty.mean()
+            if coverage is not None:
+                if coverage.shape != self.motion_coverage.shape:
+                    raise ValueError('resume motion coverage shape differs')
+                self.motion_coverage.copy_(coverage.to(self.device))
         # Warm start deliberately keeps new optimizers and curriculum clock.
         return checkpoint.get("infos")
 
