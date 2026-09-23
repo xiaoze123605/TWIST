@@ -80,7 +80,7 @@ fi
   --output "$RUN_ROOT/ppo" \
   --warm-start "$RUN_ROOT/dagger/model_round1.pt" \
   --max_iterations "$MAX_ITERATIONS" --num_envs "$PPO_ENVS" --seed 202 \
-  --save-interval 100 --policy-learning-rate 0.00005 \
+  --save-interval 500 --policy-learning-rate 0.00005 \
   --disable-world-model --headless 2>&1 | tee "$RUN_ROOT/ppo_console.log"
 
 echo "$RUN_ROOT"

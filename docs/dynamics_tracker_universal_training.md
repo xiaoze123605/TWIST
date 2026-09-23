@@ -25,7 +25,7 @@ NUM_ENVS=2048 PPO_ENVS=4096 MAX_ITERATIONS=30000 \
 ```
 
 The production default is 4,096 PPO environments and 30,000 PPO iterations,
-with a checkpoint every 100 iterations. `MAX_ITERATIONS` is an upper bound;
+with a checkpoint every 500 iterations. `MAX_ITERATIONS` is an upper bound;
 validation checkpoints should still determine the deployed model.
 
 For a short pipeline preflight, use
