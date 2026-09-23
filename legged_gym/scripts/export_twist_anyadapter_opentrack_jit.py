@@ -15,6 +15,9 @@ import torch
 from rsl_rl.modules.actor_critic_twist_anyadapter_opentrack import (
     TwistAnyAdapterOpenTrackActorCritic,
 )
+from rsl_rl.modules.actor_critic_twist_baseline_guarded import (
+    TwistBaselineGuardedActorCritic, compute_adapter_gate,
+)
 
 BASE_OBS_DIM, HISTORY_LEN, HISTORY_FRAME_DIM = 1155, 79, 74
 POLICY_OBS_DIM = BASE_OBS_DIM + HISTORY_LEN * HISTORY_FRAME_DIM
@@ -30,6 +33,10 @@ class DeployActor(torch.nn.Module):
         # would also serialize the training-only dynamics WM and critic.
         self.history_encoder = actor.history_encoder
         self.layerwise_actor = actor.layerwise_actor
+        self.guard_enabled = isinstance(actor, TwistBaselineGuardedActorCritic)
+        if self.guard_enabled:
+            self.register_buffer('demand_gate_contract', actor.demand_gate_contract.clone())
+            self.register_buffer('default_dof_pos', actor.default_dof_pos.clone())
 
     def forward(self, observations):
         if observations.shape[-1] != POLICY_OBS_DIM:
@@ -39,20 +46,34 @@ class DeployActor(torch.nn.Module):
             observations.shape[0], HISTORY_LEN, HISTORY_FRAME_DIM
         )
         embedding = self.history_encoder(history)
-        return self.layerwise_actor(base_obs, embedding)
+        adapted = self.layerwise_actor(base_obs, embedding)
+        if self.guard_enabled:
+            baseline = self.layerwise_actor.base_forward(base_obs)
+            gate = compute_adapter_gate(base_obs, self.demand_gate_contract,
+                                        self.default_dof_pos)
+            return baseline + gate * (adapted - baseline)
+        return adapted
 
 
 def build_actor(checkpoint):
-    actor = TwistAnyAdapterOpenTrackActorCritic(
+    state = torch.load(checkpoint, map_location="cpu")
+    model_state = state['model_state_dict']
+    guarded = 'demand_gate_contract' in model_state
+    actor_class = TwistBaselineGuardedActorCritic if guarded else TwistAnyAdapterOpenTrackActorCritic
+    gate_kwargs = {}
+    if guarded:
+        low, high = model_state['demand_gate_contract'].tolist()
+        gate_kwargs = dict(demand_low=low, demand_high=high)
+    actor = actor_class(
         num_actions=NUM_ACTIONS, num_critic_observations=1318,
         base_actor_jit_path=BASE_JIT, base_obs_dim=BASE_OBS_DIM,
         history_len=HISTORY_LEN, history_frame_dim=HISTORY_FRAME_DIM,
         hist_state_dim=51, wm_target_indices=WM_TARGET_INDICES, latent_dim=128,
         world_model_hidden_dims=(512, 512, 256, 256, 256, 128),
         critic_hidden_dims=(512, 256, 128), activation="silu", freeze_base=True,
+        **gate_kwargs,
     )
-    state = torch.load(checkpoint, map_location="cpu")
-    actor.load_state_dict(state["model_state_dict"], strict=True)
+    actor.load_state_dict(model_state, strict=True)
     return actor.eval()
 
 
@@ -73,6 +94,15 @@ def main():
     error = float((eager(sample) - scripted(sample)).abs().max())
     if error >= 1e-5:
         raise RuntimeError(f"eager/JIT parity failed: max_abs_error={error:.3e}")
+    if isinstance(actor, TwistBaselineGuardedActorCritic):
+        neutral = torch.zeros(2, POLICY_OBS_DIM)
+        neutral[:, 8:31] = actor.default_dof_pos
+        base = torch.jit.load(BASE_JIT, map_location='cpu').eval()
+        neutral_base_error = float((eager(neutral) - base(neutral[:, :BASE_OBS_DIM])).abs().max())
+        neutral_jit_error = float((eager(neutral) - scripted(neutral)).abs().max())
+        if neutral_base_error >= 2e-5 or neutral_jit_error >= 1e-5:
+            raise RuntimeError(f'neutral gate parity failed: base={neutral_base_error:.3e}, '
+                               f'JIT={neutral_jit_error:.3e}')
     if args.adapter_gain == 0.0:
         base = torch.jit.load(BASE_JIT, map_location='cpu').eval()
         base_error = float((eager(sample) - base(sample[:, :BASE_OBS_DIM])).abs().max())

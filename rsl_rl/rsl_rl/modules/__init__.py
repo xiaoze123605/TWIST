@@ -35,4 +35,5 @@ from .actor_critic_twist_anyadapter import TwistAnyAdapterActorCritic
 from .actor_critic_twist_dtera import TwistDTERAActorCritic
 from .actor_critic_twist_any2track import TwistAny2TrackActorCritic
 from .actor_critic_twist_anyadapter_opentrack import TwistAnyAdapterOpenTrackActorCritic
+from .actor_critic_twist_baseline_guarded import TwistBaselineGuardedActorCritic
 from .dagger_actor import DAggerActor

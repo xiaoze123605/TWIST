@@ -14,9 +14,7 @@ from legged_gym.envs.g1.g1_twist_baseline_adapter_config import (
     G1TwistBaselineAdapterCfg, G1TwistBaselineAdapterCfgPPO,
 )
 from legged_gym.gym_utils.helpers import class_to_dict
-from rsl_rl.modules.actor_critic_twist_anyadapter_opentrack import (
-    TwistAnyAdapterOpenTrackActorCritic,
-)
+from rsl_rl.modules.actor_critic_twist_baseline_guarded import TwistBaselineGuardedActorCritic
 from rsl_rl.algorithms.ppo_any2track import PPOAny2Track
 
 
@@ -35,7 +33,7 @@ def main():
     assert Path(ppo.policy.base_actor_jit_path).is_file()
 
     torch.manual_seed(7)
-    actor = TwistAnyAdapterOpenTrackActorCritic(
+    actor = TwistBaselineGuardedActorCritic(
         num_actions=23, num_critic_observations=cfg.env.num_privileged_obs,
         **class_to_dict(ppo.policy),
     ).eval()
@@ -47,6 +45,11 @@ def main():
     difference = float((actual - expected).abs().max())
     assert difference < 2e-5, difference
     assert not any(p.requires_grad for p in actor.layerwise_actor.base_layers.parameters())
+    neutral = torch.zeros(1, 1155)
+    neutral[:, 8:31] = actor.default_dof_pos
+    assert float(actor.adapter_gate(neutral)) == 0.0
+    neutral[:, 4] = 1.0
+    assert float(actor.adapter_gate(neutral)) == 1.0
     algorithm = PPOAny2Track(None, actor, device='cpu', **class_to_dict(ppo.algorithm))
     assert algorithm.adapter_reg_coef > 0.0
     assert all(group['weight_decay'] == 0.0 for group in algorithm.wm_optimizer.param_groups)

@@ -4,7 +4,9 @@ The `g1_twist_baseline_adapter` task keeps `G1MimicDistill` and its TWIST
 student observation, reward, reset, curriculum, and PD control. The frozen
 0529 student JIT supplies the tracking policy. A zero-initialized layerwise
 AnyAdapter and a separately optimized action world model use an additional
-79-frame dynamics history. The motion file is the full prepared train split;
+79-frame dynamics history. An adapter-only demand gate uses the visible
+reference velocity and joint tracking error; at low demand it returns the
+frozen TWIST output. The motion file is the full prepared train split;
 validation and test motions stay outside training.
 
 Run the CPU-only contract check before training:
@@ -15,7 +17,7 @@ OMP_NUM_THREADS=2 /home/hank/anaconda3/envs/twist/bin/python \
 tools/check_twist_baseline_adapter.py
 ```
 
-After the current GPU training has ended, start this as a **separate** run:
+After a pilot passes held-out screening, start a **separate** long run:
 
 ```bash
 LD_LIBRARY_PATH=/home/hank/anaconda3/envs/twist/lib:${LD_LIBRARY_PATH:-} \
@@ -56,7 +58,8 @@ python tools/compare_twist_adapter_jit.py \
   --output /tmp/twist_paired_screen
 ```
 
-A 200-update, 256-environment full-corpus pilot completed successfully, but
-its gain-1 export regressed on several validation clips. Treat that checkpoint
-as a diagnostic only. Do not start the 30,000-update run above until the
-adapter update and held-out screening are improved.
+Two 200-update, 256-environment full-corpus pilots completed successfully.
+The ungated gain-1 policy regressed on several validation clips. The guarded
+policy preserved standing joint error but still increased turn and jump
+tracking error. Both checkpoints are diagnostics only. Do not start the
+30,000-update run above until a candidate passes broader held-out screening.

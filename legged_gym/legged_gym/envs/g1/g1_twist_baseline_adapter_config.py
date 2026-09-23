@@ -36,7 +36,7 @@ class G1TwistBaselineAdapterCfg(G1MimicStuRLCfg):
 
 class G1TwistBaselineAdapterCfgPPO(G1MimicPrivCfgPPO):
     class runner(G1MimicPrivCfgPPO.runner):
-        policy_class_name = 'TwistAnyAdapterOpenTrackActorCritic'
+        policy_class_name = 'TwistBaselineGuardedActorCritic'
         # PPOAny2Track keeps the same dynamics-WM path while allowing a
         # baseline-preserving adapter penalty. The OpenTrack specialization
         # explicitly forbids that penalty and is unsuitable for this run.
@@ -66,6 +66,8 @@ class G1TwistBaselineAdapterCfgPPO(G1MimicPrivCfgPPO):
         init_noise_std = 0.05
         fix_action_std = False
         adapter_gain = 1.0
+        demand_low = 0.18
+        demand_high = 0.55
         freeze_base = True
 
     class algorithm(G1MimicPrivCfgPPO.algorithm):
