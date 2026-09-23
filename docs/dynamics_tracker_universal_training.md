@@ -28,6 +28,11 @@ The production default is 4,096 PPO environments and 30,000 PPO iterations,
 with a checkpoint every 500 iterations. `MAX_ITERATIONS` is an upper bound;
 validation checkpoints should still determine the deployed model.
 
+To view a currently running PPO job in the original TWIST console layout,
+without restarting training, run `python tools/watch_dynamics_tracker.py RUN/ppo`.
+The watcher displays the latest iteration and then every tenth iteration.
+Use `--every 1` to display every update. Pressing Ctrl+C stops only the watcher.
+
 For a short pipeline preflight, use
 `NUM_ENVS=256 PPO_ENVS=256 COVERAGE_STEPS=10`; this deliberately skips complete
 corpus coverage and must not be used as the final policy run.

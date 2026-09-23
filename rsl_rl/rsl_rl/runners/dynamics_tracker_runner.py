@@ -2,12 +2,14 @@
 import json
 import math
 import hashlib
+import time
 from pathlib import Path
 
 import torch
 
 from rsl_rl.modules.dynamics_tracker import DynamicsTrackerActorCritic
 from rsl_rl.algorithms.ppo_dynamics_tracker import PPODynamicsTracker
+from rsl_rl.runners.dynamics_tracker_log import format_iteration
 
 
 class DynamicsTrackerRunner:
@@ -45,7 +47,10 @@ class DynamicsTrackerRunner:
             raise ValueError("RSI sets reference phase; do not randomize episode counters")
         obs, critic = self.env.get_observations(), self.env.get_privileged_observations()
         self.alg.actor_critic.train()
+        training_start = time.perf_counter()
+        start_iteration = self.current_learning_iteration
         for _ in range(num_learning_iterations):
+            iteration_start = time.perf_counter()
             reward_sum, dones_count = 0., 0
             physical_failures = motion_completions = timeouts = 0
             iteration_motion_ids = []
@@ -64,7 +69,9 @@ class DynamicsTrackerRunner:
                     motion_completions += int(info['motion_completed'].sum())
                     timeouts += int(info['time_outs'].sum())
                 self.alg.compute_returns(critic)
+            collection_time = time.perf_counter() - iteration_start
             self.alg.update()
+            learning_time = time.perf_counter() - iteration_start - collection_time
             self.current_learning_iteration += 1
             metrics = dict(self.alg.metrics, iteration=self.current_learning_iteration,
                            mean_reward=reward_sum / self.num_steps_per_env,
@@ -76,10 +83,21 @@ class DynamicsTrackerRunner:
                                torch.cat(iteration_motion_ids)).numel()),
                            motions_seen_total=int(self.motion_coverage.sum()),
                            motion_count=int(self.motion_coverage.numel()),
-                           mean_motion_difficulty=float(self.env.motion_difficulty.mean()))
+                           mean_motion_difficulty=float(self.env.motion_difficulty.mean()),
+                           collection_time_s=collection_time,
+                           learning_time_s=learning_time,
+                           iteration_time_s=collection_time + learning_time,
+                           elapsed_time_s=time.perf_counter() - training_start,
+                           fps=self.env.num_envs * self.num_steps_per_env /
+                               max(collection_time + learning_time, 1e-9))
+            completed_this_run = self.current_learning_iteration - start_iteration
+            metrics['eta_s'] = (num_learning_iterations - completed_this_run) * (
+                metrics['elapsed_time_s'] / max(completed_this_run, 1))
             if not all(math.isfinite(float(v)) for v in metrics.values()):
                 raise FloatingPointError("non-finite learning metrics")
-            print(json.dumps(metrics, sort_keys=True))
+            print(format_iteration(metrics,
+                                   start_iteration + num_learning_iterations,
+                                   self.env.num_envs, self.num_steps_per_env), flush=True)
             if self.log_dir:
                 self.log_dir.mkdir(parents=True, exist_ok=True)
                 with (self.log_dir / "train_metrics.jsonl").open("a") as output:
