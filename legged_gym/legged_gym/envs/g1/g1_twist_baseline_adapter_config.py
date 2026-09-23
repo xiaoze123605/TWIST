@@ -40,13 +40,13 @@ class G1TwistBaselineAdapterCfgPPO(G1MimicPrivCfgPPO):
         # PPOAny2Track keeps the same dynamics-WM path while allowing a
         # baseline-preserving adapter penalty. The OpenTrack specialization
         # explicitly forbids that penalty and is unsuitable for this run.
-        algorithm_class_name = 'PPOAny2Track'
+        algorithm_class_name = 'PPOTwistBaselineAdapter'
         runner_class_name = 'OnPolicyRunnerMimic'
         experiment_name = 'g1_twist_baseline_adapter'
         run_name = ''
         num_steps_per_env = 24
         max_iterations = 30000
-        save_interval = 500
+        save_interval = 50
         constant_save_interval = True
         init_at_random_ep_len = True
 
@@ -81,8 +81,31 @@ class G1TwistBaselineAdapterCfgPPO(G1MimicPrivCfgPPO):
         world_model_sequence_length = 20
         world_model_num_epochs = 1
         world_model_component_weights = [5.0, 5.0, 1.0, 0.5]
-        adapter_reg_coef = 1.0
+        adapter_reg_initial_coef = 4.0
+        adapter_reg_coef = 2.0
+        adapter_reg_anneal_iterations = 300
         adapter_bias_reg_coef = 0.0
         stand_anchor_coef = 0.0
         synthetic_stand_anchor_coef = 0.0
         weight_decay = 0.0
+
+
+class G1TwistBaselineAdapterRefineCfgPPO(G1TwistBaselineAdapterCfgPPO):
+    """Fine-tune the best validated actor with the screened 0.25 gain."""
+
+    class runner(G1TwistBaselineAdapterCfgPPO.runner):
+        experiment_name = 'g1_twist_baseline_adapter_refine'
+        # The first held-out screen found a fall by update 100. Keep this a
+        # short diagnostic task until a revised run passes paired validation.
+        max_iterations = 100
+
+    class policy(G1TwistBaselineAdapterCfgPPO.policy):
+        adapter_gain = 0.25
+
+    class algorithm(G1TwistBaselineAdapterCfgPPO.algorithm):
+        policy_learning_rate = 3e-6
+        adapter_reg_initial_coef = 4.0
+        adapter_reg_coef = 4.0
+        adapter_reg_anneal_iterations = 0
+        adapter_tail_threshold = 0.12
+        adapter_tail_coef = 8.0

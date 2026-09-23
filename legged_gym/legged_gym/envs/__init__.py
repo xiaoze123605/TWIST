@@ -91,6 +91,11 @@ task_registry.register("g1_motion_wm_dtera_deploy_v4", G1MotionWMDTERADeployV4, 
 task_registry.register("g1_stu_anyadapter_dtera_selective", G1MimicDistill, G1MimicStuAnyAdapterDTERASelectiveCfg(), G1MimicStuAnyAdapterDTERASelectiveCfgPPO())
 task_registry.register("g1_stu_anyadapter_v5", G1MimicDistill, G1MimicStuAnyAdapterV5Cfg(), G1MimicStuAnyAdapterV5CfgPPO())
 task_registry.register("g1_stu_anyadapter_v6", G1MimicDistill, G1MimicStuAnyAdapterV6Cfg(), G1MimicStuAnyAdapterV6CfgPPO())
-from .g1.g1_twist_baseline_adapter_config import G1TwistBaselineAdapterCfg, G1TwistBaselineAdapterCfgPPO
+from .g1.g1_twist_baseline_adapter_config import (
+    G1TwistBaselineAdapterCfg, G1TwistBaselineAdapterCfgPPO,
+    G1TwistBaselineAdapterRefineCfgPPO,
+)
 task_registry.register("g1_twist_baseline_adapter", G1MimicDistill,
                        G1TwistBaselineAdapterCfg(), G1TwistBaselineAdapterCfgPPO())
+task_registry.register("g1_twist_baseline_adapter_refine", G1MimicDistill,
+                       G1TwistBaselineAdapterCfg(), G1TwistBaselineAdapterRefineCfgPPO())

@@ -1,0 +1,74 @@
+{
+  "motions": [
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl"
+  ],
+  "baseline": {
+    "joint_rmse": 0.12727860000689148,
+    "root_error": 0.28879480019230913,
+    "yaw_error": 0.5424681713731205,
+    "root_velocity_rmse": 0.13737311408242997
+  },
+  "candidates": [
+    {
+      "label": "refine100",
+      "accepted": false,
+      "score": 1.0084299937893677,
+      "means": {
+        "joint_rmse": 0.13523543997975684,
+        "root_error": 0.28296744406948543,
+        "yaw_error": 0.4922980819902708,
+        "root_velocity_rmse": 0.14889430513163965
+      },
+      "ratios": {
+        "joint_rmse": 1.0625151437274964,
+        "root_error": 0.9798218107841857,
+        "yaw_error": 0.9075151464539258,
+        "root_velocity_rmse": 1.083867874191863
+      },
+      "falls": 1,
+      "max_joint_ratio": 1.1647973634042472
+    },
+    {
+      "label": "refine50",
+      "accepted": true,
+      "score": 0.9897610960463934,
+      "means": {
+        "joint_rmse": 0.12807242524334378,
+        "root_error": 0.2819384036181116,
+        "yaw_error": 0.5257063387388965,
+        "root_velocity_rmse": 0.13839628094995887
+      },
+      "ratios": {
+        "joint_rmse": 1.006236910497203,
+        "root_error": 0.976258587171127,
+        "yaw_error": 0.9691007997910813,
+        "root_velocity_rmse": 1.0074480867261622
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.012948649239217
+    },
+    {
+      "label": "source1600",
+      "accepted": true,
+      "score": 0.9524039185119615,
+      "means": {
+        "joint_rmse": 0.12732904177480434,
+        "root_error": 0.2614003087115386,
+        "yaw_error": 0.486932830556597,
+        "root_velocity_rmse": 0.13825953370690086
+      },
+      "ratios": {
+        "joint_rmse": 1.000396309889566,
+        "root_error": 0.9051420196536485,
+        "yaw_error": 0.8976247017848993,
+        "root_velocity_rmse": 1.006452642719732
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0066219588936256
+    }
+  ],
+  "selected_label": "source1600"
+}

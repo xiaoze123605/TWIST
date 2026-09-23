@@ -12,12 +12,13 @@ import torch
 from legged_gym.envs.g1.g1_mimic_distill_config import G1MimicStuRLCfg
 from legged_gym.envs.g1.g1_twist_baseline_adapter_config import (
     G1TwistBaselineAdapterCfg, G1TwistBaselineAdapterCfgPPO,
+    G1TwistBaselineAdapterRefineCfgPPO,
 )
 from legged_gym.gym_utils.helpers import class_to_dict
 from rsl_rl.modules.actor_critic_twist_anyadapter_opentrack import (
     TwistAnyAdapterOpenTrackActorCritic,
 )
-from rsl_rl.algorithms.ppo_any2track import PPOAny2Track
+from rsl_rl.algorithms.ppo_twist_baseline_adapter import PPOTwistBaselineAdapter
 
 
 def main():
@@ -47,9 +48,21 @@ def main():
     difference = float((actual - expected).abs().max())
     assert difference < 2e-5, difference
     assert not any(p.requires_grad for p in actor.layerwise_actor.base_layers.parameters())
-    algorithm = PPOAny2Track(None, actor, device='cpu', **class_to_dict(ppo.algorithm))
+    assert ppo.runner.algorithm_class_name == 'PPOTwistBaselineAdapter'
+    algorithm = PPOTwistBaselineAdapter(None, actor, device='cpu', **class_to_dict(ppo.algorithm))
     assert algorithm.adapter_reg_coef > 0.0
+    assert algorithm.effective_adapter_reg_coef(0) == 4.0
+    assert algorithm.effective_adapter_reg_coef(300) == 2.0
     assert all(group['weight_decay'] == 0.0 for group in algorithm.wm_optimizer.param_groups)
+    refine = G1TwistBaselineAdapterRefineCfgPPO()
+    assert refine.runner.algorithm_class_name == 'PPOTwistBaselineAdapter'
+    assert refine.policy.adapter_gain == 0.25
+    assert refine.algorithm.policy_learning_rate == 3e-6
+    assert refine.algorithm.adapter_reg_initial_coef == 4.0
+    assert refine.algorithm.adapter_reg_coef == 4.0
+    assert refine.algorithm.adapter_reg_anneal_iterations == 0
+    assert refine.algorithm.adapter_tail_threshold == 0.12
+    assert refine.algorithm.adapter_tail_coef == 8.0
     print(f'TWIST contract preserved; initial adapter/base max_abs_diff={difference:.3e}')
 
 

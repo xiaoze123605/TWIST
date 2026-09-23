@@ -24,8 +24,11 @@ BASE_JIT = str(ROOT / "legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_
 
 
 class DeployActor(torch.nn.Module):
-    def __init__(self, actor):
+    def __init__(self, actor, latent_mode="normal"):
         super().__init__()
+        if latent_mode not in ("normal", "zero"):
+            raise ValueError("latent_mode must be normal or zero")
+        self.latent_mode = latent_mode
         # Register deployment-only modules. Keeping the complete actor here
         # would also serialize the training-only dynamics WM and critic.
         self.history_encoder = actor.history_encoder
@@ -39,10 +42,14 @@ class DeployActor(torch.nn.Module):
             observations.shape[0], HISTORY_LEN, HISTORY_FRAME_DIM
         )
         embedding = self.history_encoder(history)
+        if self.latent_mode == "zero":
+            embedding = torch.zeros_like(embedding)
         return self.layerwise_actor(base_obs, embedding)
 
 
 def build_actor(checkpoint):
+    state = torch.load(checkpoint, map_location="cpu")
+    trained_gain = state.get("training_config", {}).get("policy", {}).get("adapter_gain", 1.0)
     actor = TwistAnyAdapterOpenTrackActorCritic(
         num_actions=NUM_ACTIONS, num_critic_observations=1318,
         base_actor_jit_path=BASE_JIT, base_obs_dim=BASE_OBS_DIM,
@@ -50,8 +57,8 @@ def build_actor(checkpoint):
         hist_state_dim=51, wm_target_indices=WM_TARGET_INDICES, latent_dim=128,
         world_model_hidden_dims=(512, 512, 256, 256, 256, 128),
         critic_hidden_dims=(512, 256, 128), activation="silu", freeze_base=True,
+        adapter_gain=trained_gain,
     )
-    state = torch.load(checkpoint, map_location="cpu")
     actor.load_state_dict(state["model_state_dict"], strict=True)
     return actor.eval()
 
@@ -60,20 +67,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--adapter-gain", type=float, default=1.0,
-                        help="Layer-adapter strength in [0,1]; zero exactly recovers TWIST.")
+    parser.add_argument("--adapter-gain", type=float, default=None,
+                        help="Override checkpoint training gain in [0,1]; zero exactly recovers TWIST.")
+    parser.add_argument("--latent-mode", choices=("normal", "zero"), default="normal",
+                        help="Zero is a diagnostic ablation of dynamics-history conditioning.")
     args = parser.parse_args()
-    if not math.isfinite(args.adapter_gain) or not 0.0 <= args.adapter_gain <= 1.0:
+    if args.adapter_gain is not None and (not math.isfinite(args.adapter_gain)
+                                          or not 0.0 <= args.adapter_gain <= 1.0):
         parser.error('--adapter-gain must be finite and in [0,1]')
     actor = build_actor(args.checkpoint)
-    actor.layerwise_actor.adapter_gain = args.adapter_gain
-    eager = DeployActor(actor).eval()
+    if args.adapter_gain is not None:
+        actor.layerwise_actor.adapter_gain = args.adapter_gain
+    gain = actor.layerwise_actor.adapter_gain
+    eager = DeployActor(actor, latent_mode=args.latent_mode).eval()
     sample = torch.randn(2, POLICY_OBS_DIM)
     scripted = torch.jit.trace(eager, sample)
     error = float((eager(sample) - scripted(sample)).abs().max())
     if error >= 1e-5:
         raise RuntimeError(f"eager/JIT parity failed: max_abs_error={error:.3e}")
-    if args.adapter_gain == 0.0:
+    if gain == 0.0:
         base = torch.jit.load(BASE_JIT, map_location='cpu').eval()
         base_error = float((eager(sample) - base(sample[:, :BASE_OBS_DIM])).abs().max())
         if base_error >= 2e-5:
@@ -81,7 +93,7 @@ def main():
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     scripted.save(str(output))
-    print(f"saved {output}; adapter_gain={args.adapter_gain:g}; "
+    print(f"saved {output}; adapter_gain={gain:g}; latent_mode={args.latent_mode}; "
           f"eager/JIT max_abs_error={error:.3e}")
 
 
