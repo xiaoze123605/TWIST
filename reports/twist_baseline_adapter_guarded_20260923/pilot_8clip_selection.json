@@ -1,0 +1,59 @@
+{
+  "motions": [
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/13.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/17.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/6_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/47_seg03.pkl"
+  ],
+  "baseline": {
+    "joint_rmse": 0.13474442252551835,
+    "root_error": 0.33977424646036347,
+    "yaw_error": 0.6507949388959319,
+    "root_velocity_rmse": 0.16213685321467475
+  },
+  "candidates": [
+    {
+      "label": "guarded200",
+      "accepted": true,
+      "score": 0.9313940597581225,
+      "means": {
+        "joint_rmse": 0.13471465416386288,
+        "root_error": 0.2954242490327081,
+        "yaw_error": 0.5673228426092212,
+        "root_velocity_rmse": 0.159637797088845
+      },
+      "ratios": {
+        "joint_rmse": 0.9997790753702638,
+        "root_error": 0.8694721630915925,
+        "yaw_error": 0.8717382522545114,
+        "root_velocity_rmse": 0.9845867483161221
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0174704794693594
+    },
+    {
+      "label": "source1600",
+      "accepted": true,
+      "score": 0.973838063336399,
+      "means": {
+        "joint_rmse": 0.13395672455973778,
+        "root_error": 0.32463161876751895,
+        "yaw_error": 0.6235753868867923,
+        "root_velocity_rmse": 0.16012472425059826
+      },
+      "ratios": {
+        "joint_rmse": 0.9941541330541426,
+        "root_error": 0.9554332682638706,
+        "yaw_error": 0.9581749175011758,
+        "root_velocity_rmse": 0.9875899345264068
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0108209516700832
+    }
+  ],
+  "selected_label": "guarded200"
+}

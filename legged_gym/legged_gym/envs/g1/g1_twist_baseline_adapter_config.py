@@ -91,7 +91,7 @@ class G1TwistBaselineAdapterCfgPPO(G1MimicPrivCfgPPO):
 
 
 class G1TwistBaselineAdapterRefineCfgPPO(G1TwistBaselineAdapterCfgPPO):
-    """Fine-tune the best validated actor with the screened 0.25 gain."""
+    """Short guarded experiment from the selected 1600-update checkpoint."""
 
     class runner(G1TwistBaselineAdapterCfgPPO.runner):
         experiment_name = 'g1_twist_baseline_adapter_refine'
@@ -103,7 +103,13 @@ class G1TwistBaselineAdapterRefineCfgPPO(G1TwistBaselineAdapterCfgPPO):
         adapter_gain = 0.25
 
     class algorithm(G1TwistBaselineAdapterCfgPPO.algorithm):
-        policy_learning_rate = 3e-6
+        policy_learning_rate = 2e-6
+        world_model_loss_coef = 0.0
+        freeze_world_model = True
+        policy_anchor_checkpoint = str(
+            _ROOT / 'legged_gym/logs/g1_twist_baseline_adapter/'
+                    'anchored_opt_v2_long/model_1600.pt')
+        policy_anchor_coef = 10.0
         adapter_reg_initial_coef = 4.0
         adapter_reg_coef = 4.0
         adapter_reg_anneal_iterations = 0

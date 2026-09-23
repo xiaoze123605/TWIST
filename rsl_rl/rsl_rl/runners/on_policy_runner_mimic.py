@@ -439,6 +439,8 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/branch_cosine_similarity'] = anyadapter_metrics.get("branch_cosine_similarity", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
             wandb_dict['AnyAdapter/adapter_tail_loss'] = anyadapter_metrics.get("adapter_tail_loss", 0.0)
+            wandb_dict['AnyAdapter/policy_anchor_penalty'] = anyadapter_metrics.get("policy_anchor_penalty", 0.0)
+            wandb_dict['AnyAdapter/policy_anchor_mean_abs'] = anyadapter_metrics.get("policy_anchor_mean_abs", 0.0)
             wandb_dict['AnyAdapter/effective_adapter_reg_coef'] = anyadapter_metrics.get("effective_adapter_reg_coef", 0.0)
             wandb_dict['AnyAdapter/residual_saturation_penalty'] = anyadapter_metrics.get("residual_saturation_penalty", 0.0)
             wandb_dict['AnyAdapter/adapter_bias_reg_loss'] = anyadapter_metrics.get("adapter_bias_reg_loss", 0.0)
@@ -473,6 +475,8 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter branch cosine:':>{pad}} {anyadapter_metrics.get('branch_cosine_similarity', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter tail reg:':>{pad}} {anyadapter_metrics.get('adapter_tail_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter policy anchor:':>{pad}} {anyadapter_metrics.get('policy_anchor_penalty', 0.0):.6f}\n"""
+                f"""{'AnyAdapter anchor mean |diff|:':>{pad}} {anyadapter_metrics.get('policy_anchor_mean_abs', 0.0):.6f}\n"""
                 f"""{'AnyAdapter effective reg:':>{pad}} {anyadapter_metrics.get('effective_adapter_reg_coef', 0.0):.6f}\n"""
                 f"""{'AnyAdapter saturation reg:':>{pad}} {anyadapter_metrics.get('residual_saturation_penalty', 0.0):.6f}\n"""
                 f"""{'AnyAdapter bias reg:':>{pad}} {anyadapter_metrics.get('adapter_bias_reg_loss', 0.0):.6f}\n"""
