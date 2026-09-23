@@ -44,3 +44,19 @@ The initial adapter was checked against the original TWIST JIT: CPU actor
 output max difference was zero, and a 380-frame MuJoCo walk gave exactly the
 same tracking metrics. This is an initialization property, not a guarantee
 about later trained checkpoints.
+
+For paired screening, `tools/compare_twist_adapter_jit.py` starts its own
+Redis instance and runs every supplied JIT on every supplied clip. For example:
+
+```bash
+python tools/compare_twist_adapter_jit.py \
+  --jit base=legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt \
+  --jit candidate=/path/to/exported-adapter-jit.pt \
+  --motion 'track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl=5.60' \
+  --output /tmp/twist_paired_screen
+```
+
+A 200-update, 256-environment full-corpus pilot completed successfully, but
+its gain-1 export regressed on several validation clips. Treat that checkpoint
+as a diagnostic only. Do not start the 30,000-update run above until the
+adapter update and held-out screening are improved.
