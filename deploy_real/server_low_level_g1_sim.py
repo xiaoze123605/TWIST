@@ -35,6 +35,18 @@ SUPPORTED_POLICY_OBS_DIMS = (
     ANY2TRACK_OBS_DIM,
 )
 
+
+def _dynamics_tracker_spec(policy_path):
+    """Read the optional embedded deployment contract before legacy shape probing."""
+    extra = {'deployment.json': ''}
+    torch.jit.load(policy_path, map_location='cpu', _extra_files=extra)
+    if not extra['deployment.json']:
+        return None
+    spec = json.loads(extra['deployment.json'])
+    if spec.get('policy_kind') != 'dynamics_tracker' or spec.get('version') != 1:
+        raise ValueError('Unsupported deployment contract in policy JIT')
+    return spec
+
 # AnyAdapter runtime support (optional)
 try:
     from twist_anyadapter_runtime import AnyAdapterRuntime, AnyAdapterRuntimeConfig
@@ -332,10 +344,15 @@ class RealTimePolicyController:
         self.device = device
         self.headless = bool(headless)
         self.sync_reference = sync_reference
-        self.policy_obs_dim = _detect_policy_obs_dim(policy_path, device)
-        self.use_anyadapter = _should_use_anyadapter(
-            policy_path, device, use_anyadapter, self.policy_obs_dim
-        )
+        self.tracker_spec = _dynamics_tracker_spec(policy_path)
+        self.use_dynamics_tracker = self.tracker_spec is not None
+        self.policy_obs_dim = (self.tracker_spec['observation_dim'] if self.use_dynamics_tracker
+                               else _detect_policy_obs_dim(policy_path, device))
+        self.use_anyadapter = (False if self.use_dynamics_tracker else
+                               _should_use_anyadapter(policy_path, device, use_anyadapter,
+                                                      self.policy_obs_dim))
+        if self.use_dynamics_tracker and (use_anyadapter or require_dtera):
+            raise ValueError('DynamicsTracker JIT uses its embedded runtime; remove legacy runtime flags')
         self.use_dtera = self.policy_obs_dim == DTERA_OBS_DIM
         if require_dtera and not self.use_dtera:
             raise ValueError("DTERA required: policy must accept exactly 3695 dimensions")
@@ -348,7 +365,13 @@ class RealTimePolicyController:
             2 if self.policy_obs_dim == ANYADAPTER_HEADING_OBS_DIM else 0
         )
 
-        if self.use_anyadapter:
+        if self.use_dynamics_tracker:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'rsl_rl'))
+            from rsl_rl.modules.dynamics_tracker_runtime import DynamicsTrackerRuntime, measured_state_and_reference
+            self.measured_state_and_reference = measured_state_and_reference
+            self.dynamics_tracker_runtime_class = DynamicsTrackerRuntime
+            self.policy = None
+        elif self.use_anyadapter:
             if not _ANYADAPTER_AVAILABLE:
                 raise ImportError(
                     "AnyAdapter runtime not found. Ensure deploy_real/ is on PYTHONPATH."
@@ -389,6 +412,12 @@ class RealTimePolicyController:
         self.model = mujoco.MjModel.from_xml_path(xml_file)
         self.model.opt.timestep = 0.001
         self.data = mujoco.MjData(self.model)
+        if self.use_dynamics_tracker:
+            joint_names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT,
+                                            self.model.dof_jntid[i]) for i in range(6, self.model.nv)]
+            body_names = [name for i, name in enumerate(joint_names) if i not in (19, 24)]
+            self.dynamics_tracker_runtime = self.dynamics_tracker_runtime_class(
+                policy_path, body_names, device=device)
         
         # Print DoF names in order
         print("Degrees of Freedom (DoF) names and their order:")
@@ -479,6 +508,13 @@ class RealTimePolicyController:
                 25, 25, 25, 25, 25,
                 25, 25, 25, 25, 25,
             ])
+        if self.use_dynamics_tracker:
+            for key, field in (('kp', 'stiffness'), ('kd', 'damping'),
+                               ('torque_limits', 'torque_limits')):
+                values = np.asarray(self.tracker_spec[key], dtype=np.float64)
+                if values.shape != (23,):
+                    raise ValueError(f'Invalid {key} in DynamicsTracker deployment contract')
+                getattr(self, field)[[i for i in range(25) if i not in (19, 24)]] = values
         
         self.action_scale = 0.5
 
@@ -608,6 +644,8 @@ class RealTimePolicyController:
         self.reset(self.mujoco_default_dof_pos)
         if self.use_anyadapter:
             self.anyadapter_runtime.reset()
+        if self.use_dynamics_tracker:
+            self.dynamics_tracker_runtime.reset(self.tracker_spec['initial_target'])
 
         steps = int(self.sim_duration / self.sim_dt)
         pbar = tqdm(range(steps), desc="Simulating...")
@@ -698,10 +736,21 @@ class RealTimePolicyController:
                     obs_buf = np.concatenate([obs_full, obs_hist])
                     self.proprio_history_buf.append(obs_full)
 
-                    obs_tensor = torch.from_numpy(obs_buf).float().unsqueeze(0).to(self.device)
+                    if self.use_dynamics_tracker:
+                        state, relative_reference = self.measured_state_and_reference(
+                            torch.from_numpy(body_dof_pos).float().to(self.device)[None],
+                            torch.from_numpy(body_dof_vel).float().to(self.device)[None],
+                            torch.from_numpy(ang_vel).float().to(self.device)[None],
+                            torch.from_numpy(quat).float().to(self.device)[None],
+                            torch.from_numpy(action_mimic).float().to(self.device)[None])
+                    else:
+                        obs_tensor = torch.from_numpy(obs_buf).float().unsqueeze(0).to(self.device)
                     inference_start = time.perf_counter()
                     with torch.no_grad():
-                        if self.use_anyadapter:
+                        if self.use_dynamics_tracker:
+                            raw_action = self.dynamics_tracker_runtime.propose(
+                                state, relative_reference).cpu().numpy()
+                        elif self.use_anyadapter:
                             adapter_context = None
                             if self.anyadapter_context_dim == 2:
                                 heading_error = np.arctan2(
@@ -762,9 +811,13 @@ class RealTimePolicyController:
                     self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
                     self.last_action = raw_action
-                    raw_action = np.clip(raw_action, -10., 10.)
-                    scaled_actions = raw_action * self.action_scale
-                    pd_target = scaled_actions + self.default_dof_pos
+                    if self.use_dynamics_tracker:
+                        pd_target = raw_action
+                        self.dynamics_tracker_runtime.commit(pd_target)
+                    else:
+                        raw_action = np.clip(raw_action, -10., 10.)
+                        scaled_actions = raw_action * self.action_scale
+                        pd_target = scaled_actions + self.default_dof_pos
                     pd_target = aggregate_wrist_dof_pos(pd_target, wrist_dof_pos)
                     # debug draw velocity arrow if you want
                     if self.viewer is not None:
