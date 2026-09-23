@@ -57,12 +57,27 @@ def main():
     refine = G1TwistBaselineAdapterRefineCfgPPO()
     assert refine.runner.algorithm_class_name == 'PPOTwistBaselineAdapter'
     assert refine.policy.adapter_gain == 0.25
-    assert refine.algorithm.policy_learning_rate == 3e-6
+    assert refine.algorithm.policy_learning_rate == 2e-6
+    assert refine.algorithm.world_model_loss_coef == 0.0
+    assert refine.algorithm.freeze_world_model
+    assert Path(refine.algorithm.policy_anchor_checkpoint).is_file()
+    assert refine.algorithm.policy_anchor_coef == 10.0
     assert refine.algorithm.adapter_reg_initial_coef == 4.0
     assert refine.algorithm.adapter_reg_coef == 4.0
     assert refine.algorithm.adapter_reg_anneal_iterations == 0
     assert refine.algorithm.adapter_tail_threshold == 0.12
     assert refine.algorithm.adapter_tail_coef == 8.0
+    refinement = PPOTwistBaselineAdapter(
+        None, actor, device='cpu', **class_to_dict(refine.algorithm)
+    )
+    actor.load_state_dict(torch.load(
+        refine.algorithm.policy_anchor_checkpoint, map_location='cpu'
+    )['model_state_dict'])
+    with torch.no_grad():
+        anchored, absolute = refinement._policy_anchor_penalty(obs, actor.actor_mean(obs))
+    assert anchored.item() < 1e-12 and absolute.item() < 1e-12
+    assert not any(p.requires_grad for p in actor.history_encoder.parameters())
+    assert not any(p.requires_grad for p in actor.world_model.parameters())
     print(f'TWIST contract preserved; initial adapter/base max_abs_diff={difference:.3e}')
 
 

@@ -1,4 +1,7 @@
-"""Causal dynamics supervision for the frozen TWIST adapter experiment."""
+"""Causal WM supervision and guarded refinement of the frozen TWIST actor."""
+
+from copy import deepcopy
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
@@ -8,12 +11,43 @@ from .ppo_any2track import PPOAny2Track
 
 class PPOTwistBaselineAdapter(PPOAny2Track):
     def __init__(self, *args, adapter_tail_threshold=0.0,
-                 adapter_tail_coef=0.0, **kwargs):
+                 adapter_tail_coef=0.0, freeze_world_model=False,
+                 policy_anchor_checkpoint=None, policy_anchor_coef=0.0,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.adapter_tail_threshold = float(adapter_tail_threshold)
         self.adapter_tail_coef = float(adapter_tail_coef)
+        self.freeze_world_model = bool(freeze_world_model)
+        self.policy_anchor_coef = float(policy_anchor_coef)
         if self.adapter_tail_threshold < 0 or self.adapter_tail_coef < 0:
             raise ValueError("adapter tail threshold and coefficient must be non-negative")
+        if self.policy_anchor_coef < 0:
+            raise ValueError("policy anchor coefficient must be non-negative")
+        if self.freeze_world_model:
+            if self.world_model_loss_coef != 0.0:
+                raise ValueError("frozen world model requires world_model_loss_coef=0")
+            self.actor_critic.history_encoder.requires_grad_(False)
+            self.actor_critic.world_model.requires_grad_(False)
+        self.anchor_policy = None
+        if self.policy_anchor_coef > 0:
+            if not policy_anchor_checkpoint:
+                raise ValueError("policy anchor coefficient requires a checkpoint")
+            checkpoint = Path(policy_anchor_checkpoint)
+            if not checkpoint.is_file():
+                raise FileNotFoundError(checkpoint)
+            source = torch.load(checkpoint, map_location="cpu")
+            self.anchor_policy = deepcopy(self.actor_critic)
+            self.anchor_policy.load_state_dict(source["model_state_dict"], strict=True)
+            self.anchor_policy.eval().requires_grad_(False)
+
+    def _policy_anchor_penalty(self, observations, policy_mean):
+        if self.anchor_policy is None:
+            return super()._policy_anchor_penalty(observations, policy_mean)
+        with torch.no_grad():
+            anchor_mean = self.anchor_policy.actor_mean(observations)
+        difference = policy_mean - anchor_mean
+        return (self.policy_anchor_coef * difference.square().mean(),
+                difference.abs().mean())
 
     def _adapter_regularization(self, delta):
         base_loss = delta.square().mean()

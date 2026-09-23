@@ -57,6 +57,14 @@ def train(args, warm_start_checkpoint=None):
         warm_start_checkpoint = Path(warm_start_checkpoint).resolve()
         if not warm_start_checkpoint.is_file():
             raise FileNotFoundError(warm_start_checkpoint)
+    if args.task == 'g1_twist_baseline_adapter_refine':
+        if warm_start_checkpoint is None and not (args.resume or args.resumeid):
+            raise ValueError('refinement requires --warm-start-checkpoint or --resumeid')
+        if warm_start_checkpoint is not None:
+            _, refine_cfg = task_registry.get_cfgs(args.task)
+            anchor = Path(refine_cfg.algorithm.policy_anchor_checkpoint).resolve()
+            if warm_start_checkpoint != anchor:
+                raise ValueError('refinement warm start must match the policy anchor checkpoint')
     if args.task.startswith('g1_motion_wm_dtera') or anchored_adapter:
         from tools.prepare_motion_wm_training import verify_prepared_training_yaml
         env_cfg, _ = task_registry.get_cfgs(args.task)
@@ -83,7 +91,8 @@ def train(args, warm_start_checkpoint=None):
     robot_type = args.task.split("_")[0]
     
     wandb_project = f"{robot_type}_mimic"
-    wandb.init(project=wandb_project, name=args.exptid, mode=mode, dir="../../logs")
+    wandb_dir = log_pth if anchored_adapter else "../../logs"
+    wandb.init(project=wandb_project, name=args.exptid, mode=mode, dir=wandb_dir)
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot_config.py", policy="now")
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot.py", policy="now")
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/humanoid_config.py", policy="now")
@@ -108,9 +117,20 @@ def train(args, warm_start_checkpoint=None):
             paths.append(dataset_receipt)
         if warm_start_checkpoint is not None:
             paths.append(warm_start_checkpoint)
+        resume_checkpoint = None
+        if args.resumeid and args.checkpoint is not None and args.checkpoint >= 0:
+            resume_checkpoint = (Path(LEGGED_GYM_ROOT_DIR) / 'logs' /
+                                 args.proj_name / args.resumeid /
+                                 f'model_{args.checkpoint}.pt')
+            paths.append(resume_checkpoint)
+        anchor_checkpoint = getattr(train_cfg.algorithm, 'policy_anchor_checkpoint', None)
+        if anchor_checkpoint:
+            paths.append(anchor_checkpoint)
         manifest = dict(task=args.task, seed=args.seed, num_envs=env.num_envs,
                         warm_start_checkpoint=str(warm_start_checkpoint)
                         if warm_start_checkpoint is not None else None,
+                        resume_checkpoint=str(resume_checkpoint)
+                        if resume_checkpoint is not None else None,
                         motion_library=motion_module.__file__, control_dt=env.dt,
                         loaded_motions=env._motion_lib.num_motions(),
                         minimum_reference_remaining_time=getattr(

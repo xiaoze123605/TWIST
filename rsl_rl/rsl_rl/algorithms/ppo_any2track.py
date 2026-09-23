@@ -230,6 +230,10 @@ class PPOAny2Track(PPOAnyAdapter):
     def _adapter_regularization(self, delta):
         return delta.square().mean(), delta.new_zeros(())
 
+    def _policy_anchor_penalty(self, observations, policy_mean):
+        zero = policy_mean.new_zeros(())
+        return zero, zero
+
     def update(self):
         wm_loss, wm_components, wm_grad_norm, wm_skipped = self._update_world_model()
         effective_adapter_reg_coef = self.effective_adapter_reg_coef()
@@ -242,6 +246,8 @@ class PPOAny2Track(PPOAnyAdapter):
         mean_delta_max = 0.0
         mean_adapter_reg = 0.0
         mean_adapter_tail = 0.0
+        mean_policy_anchor_penalty = 0.0
+        mean_policy_anchor_abs = 0.0
         mean_stand_anchor = 0.0
         mean_synthetic_stand_anchor = 0.0
         mean_stand_ratio = 0.0
@@ -345,6 +351,10 @@ class PPOAny2Track(PPOAnyAdapter):
             }
             if effective_adapter_reg_coef > 0.0:
                 loss = loss + effective_adapter_reg_coef * adapter_reg
+            policy_anchor_penalty, policy_anchor_abs = self._policy_anchor_penalty(
+                obs_batch, mu_batch
+            )
+            loss = loss + policy_anchor_penalty
 
             stand_anchor = obs_batch.new_zeros(())
             stand_ratio = obs_batch.new_zeros(())
@@ -376,6 +386,8 @@ class PPOAny2Track(PPOAnyAdapter):
             mean_entropy += float(entropy_batch.mean().detach().cpu())
             mean_adapter_reg += float(adapter_reg.detach().cpu())
             mean_adapter_tail += float(adapter_tail.detach().cpu())
+            mean_policy_anchor_penalty += float(policy_anchor_penalty.detach().cpu())
+            mean_policy_anchor_abs += float(policy_anchor_abs.detach().cpu())
             mean_stand_anchor += float(stand_anchor.detach().cpu())
             mean_synthetic_stand_anchor += float(
                 synthetic_stand_anchor.detach().cpu()
@@ -399,6 +411,8 @@ class PPOAny2Track(PPOAnyAdapter):
             "adapter_delta_l2": mean_delta_l2 / num_updates,
             "adapter_reg_loss": mean_adapter_reg / num_updates,
             "adapter_tail_loss": mean_adapter_tail / num_updates,
+            "policy_anchor_penalty": mean_policy_anchor_penalty / num_updates,
+            "policy_anchor_mean_abs": mean_policy_anchor_abs / num_updates,
             "effective_adapter_reg_coef": effective_adapter_reg_coef,
             "stand_anchor_loss": mean_stand_anchor / num_updates,
             "synthetic_stand_anchor_loss": (

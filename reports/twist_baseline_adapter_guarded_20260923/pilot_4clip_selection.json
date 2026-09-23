@@ -1,0 +1,112 @@
+{
+  "motions": [
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl"
+  ],
+  "baseline": {
+    "joint_rmse": 0.12727860000689148,
+    "root_error": 0.28879480019230913,
+    "yaw_error": 0.5424681713731204,
+    "root_velocity_rmse": 0.13737311408242997
+  },
+  "candidates": [
+    {
+      "label": "guarded100",
+      "accepted": true,
+      "score": 0.9626625938838833,
+      "means": {
+        "joint_rmse": 0.1269554899595912,
+        "root_error": 0.26647639366577336,
+        "yaw_error": 0.4999276022085301,
+        "root_velocity_rmse": 0.13859443926890233
+      },
+      "ratios": {
+        "joint_rmse": 0.9974613953383932,
+        "root_error": 0.9227188075696865,
+        "yaw_error": 0.9215796033582769,
+        "root_velocity_rmse": 1.0088905692691768
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.008961431529528
+    },
+    {
+      "label": "guarded150",
+      "accepted": true,
+      "score": 0.9607119111945701,
+      "means": {
+        "joint_rmse": 0.1273478978047596,
+        "root_error": 0.2659871442422481,
+        "yaw_error": 0.49692575294259794,
+        "root_velocity_rmse": 0.13809192866830639
+      },
+      "ratios": {
+        "joint_rmse": 1.0005444575746778,
+        "root_error": 0.9210247001162302,
+        "yaw_error": 0.9160459159931109,
+        "root_velocity_rmse": 1.0052325710942616
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0128002934307414
+    },
+    {
+      "label": "guarded200",
+      "accepted": true,
+      "score": 0.8780229887856988,
+      "means": {
+        "joint_rmse": 0.12831413717337875,
+        "root_error": 0.21987282078192397,
+        "yaw_error": 0.40583275458154433,
+        "root_velocity_rmse": 0.13661578632212928
+      },
+      "ratios": {
+        "joint_rmse": 1.0081359880327974,
+        "root_error": 0.7613461898742988,
+        "yaw_error": 0.7481227028569838,
+        "root_velocity_rmse": 0.9944870743787153
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0174704794693594
+    },
+    {
+      "label": "guarded50",
+      "accepted": true,
+      "score": 1.0074372228363915,
+      "means": {
+        "joint_rmse": 0.12763206129140528,
+        "root_error": 0.2916532832060385,
+        "yaw_error": 0.5459302540367202,
+        "root_velocity_rmse": 0.13884187410044427
+      },
+      "ratios": {
+        "joint_rmse": 1.0027770676649073,
+        "root_error": 1.009897972580621,
+        "yaw_error": 1.006382093634796,
+        "root_velocity_rmse": 1.0106917574652416
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.006759144160736
+    },
+    {
+      "label": "source1600",
+      "accepted": true,
+      "score": 0.9524039185119615,
+      "means": {
+        "joint_rmse": 0.12732904177480434,
+        "root_error": 0.2614003087115386,
+        "yaw_error": 0.486932830556597,
+        "root_velocity_rmse": 0.13825953370690086
+      },
+      "ratios": {
+        "joint_rmse": 1.000396309889566,
+        "root_error": 0.9051420196536485,
+        "yaw_error": 0.8976247017848995,
+        "root_velocity_rmse": 1.006452642719732
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0066219588936256
+    }
+  ],
+  "selected_label": "guarded200"
+}
