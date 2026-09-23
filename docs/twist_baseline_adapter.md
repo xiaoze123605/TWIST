@@ -1,13 +1,62 @@
-# TWIST baseline anchored adapter
+# Frozen TWIST + dynamics WM + AnyAdapter
 
-The `g1_twist_baseline_adapter` task keeps `G1MimicDistill` and its TWIST
-student observation, reward, reset, curriculum, and PD control. The frozen
-0529 student JIT supplies the tracking policy. A zero-initialized layerwise
-AnyAdapter and a separately optimized action world model use an additional
-79-frame dynamics history. The motion file is the full prepared train split;
-validation and test motions stay outside training.
+The `g1_twist_baseline_adapter` task preserves the TWIST student observation,
+reward, reset, curriculum and PD control. Its frozen 0529 JIT supplies the
+tracking policy. A layerwise AnyAdapter uses a 79-frame dynamics history; a
+separate action world model trains the history encoder. Training uses the full
+prepared training split. The four clips below are held out from training.
 
-Run the CPU-only contract check before training:
+## What the training and evaluation data show
+
+The mean motion difficulty changed from 8.90 at updates 100–299 to 7.84 at
+2500–2699, while mean episode reward changed from 49.77 to 41.28. A falling
+training reward therefore does not by itself show a worse policy. WM loss
+fell from 0.1255 to 0.0727, but mean absolute raw adapter correction rose
+from 0.0261 to 0.0643 and its maximum rose from 0.288 to 0.664. Adapter
+weight norms grew throughout this period as its L2 penalty annealed from 4
+to 2. This is evidence of policy drift, although it does not prove drift is
+the only cause of the held-out regression.
+
+Paired MuJoCo screening used four fixed validation clips, the same seed,
+raw references and an isolated Redis server. Lower errors are better.
+
+| Policy | Joint RMSE | Root error | Yaw error | Root velocity RMSE | Falls |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Frozen TWIST | 0.12728 | 0.28879 | 0.54247 | 0.13737 | 0 |
+| Original update 1600, gain 0.25 | 0.12733 | 0.26140 | 0.48693 | 0.13826 | 0 |
+| Original update 2400, gain 0.25 | 0.12717 | 0.26763 | 0.50135 | 0.14029 | 0 |
+| Refinement update 50 | 0.12807 | 0.28194 | 0.52571 | 0.13840 | 0 |
+| Refinement update 100 | 0.13524 | 0.28297 | 0.49230 | 0.14889 | 1 |
+
+The 1600 checkpoint with gain 0.25 remains the best screened checkpoint.
+The 4096-environment, 100-update refinement started from it, reset the
+optimizers, used gain 0.25 during PPO, held adapter L2 at 4 and penalized
+raw corrections above 0.12. Mean absolute correction stayed near 0.016,
+but the checkpoint at 100 fell on `mydata2/3_seg00.pkl`. Neither its updated
+adapter alone nor its updated encoder alone fell on that clip; their combined
+change did. This points to interaction between the two learned branches.
+It does not justify continuing this refinement to 30000 updates.
+
+Zeroing the 1600 checkpoint's history latent worsened root and yaw error
+on the same clips. The history encoder contributes useful information, so
+removing it outright is not supported by this test.
+
+## Code changes
+
+`PPOTwistBaselineAdapter` fixes the WM target's one-step alignment: it uses
+the action actually sent to the environment from the next observation's
+history and records the pre-action state in autoregressive history. This
+matters when commands are delayed or clipped. The refinement task also
+supports a fixed adapter penalty and a squared tail penalty; these are
+experimental controls, not a validated improvement. The exporter reads the
+training gain stored in new checkpoints, with an explicit override for
+older checkpoints. `tools/select_twist_adapter_checkpoint.py` chooses among
+complete paired results, rejecting extra falls and material joint or
+velocity regressions.
+
+## Reproduce the screening result
+
+Run the contract and causal checks before training or export:
 
 ```bash
 LD_LIBRARY_PATH=/home/hank/anaconda3/envs/twist/lib:${LD_LIBRARY_PATH:-} \
@@ -15,48 +64,40 @@ OMP_NUM_THREADS=2 /home/hank/anaconda3/envs/twist/bin/python \
 tools/check_twist_baseline_adapter.py
 ```
 
-After the current GPU training has ended, start this as a **separate** run:
+The completed pilot is in
+`legged_gym/logs/g1_twist_baseline_adapter/anchored_refine_1600_v1_20260923`.
+Its paired results, branch ablation and selection are in
+`reports/twist_baseline_adapter_refinement_20260923`. To select from a new
+paired evaluation:
+
+```bash
+python tools/select_twist_adapter_checkpoint.py \
+  /path/to/paired_screen/results.json \
+  --output /path/to/paired_screen/selection.json
+```
+
+The following command reproduces the failed 100-update refinement; it is
+provided for diagnosis, not as a recommendation to repeat training. Use a
+fresh `--exptid` if reproducing it. `--max_iterations` counts updates in
+the new experiment. At 4096 environments and 24 steps per update, 30000
+updates would be 2,949,120,000 environment transitions; counting the
+original 1600 updates toward a total cap of 30000 leaves at most 28400 new
+updates. A revised method should first beat the 1600 checkpoint on the
+held-out screen at successive saved updates. Stop if a later update
+regresses or falls.
 
 ```bash
 LD_LIBRARY_PATH=/home/hank/anaconda3/envs/twist/lib:${LD_LIBRARY_PATH:-} \
 OMP_NUM_THREADS=2 /home/hank/anaconda3/envs/twist/bin/python -u \
 legged_gym/legged_gym/scripts/train.py \
-  --task g1_twist_baseline_adapter \
+  --task g1_twist_baseline_adapter_refine \
   --proj_name g1_twist_baseline_adapter \
-  --exptid anchored_full_v1 \
-  --num_envs 4096 --max_iterations 30000 --seed 42 --no_wandb
+  --exptid YOUR_NEW_PILOT_ID \
+  --warm-start-checkpoint \
+  legged_gym/logs/g1_twist_baseline_adapter/anchored_opt_v2_long/model_1600.pt \
+  --num_envs 4096 --max_iterations 100 --seed 42 --no_wandb
 ```
 
-Checkpoints are saved every 500 iterations. Export a selected checkpoint with
-`legged_gym/scripts/export_twist_anyadapter_opentrack_jit.py`, then compare it
-against the base JIT on the same held-out motions, motion server settings,
-MuJoCo model, and seed. Include easy, locomotion, and dynamic motions. A
-checkpoint must improve the aggregate result without a material increase in
-falls or loss of easy-motion stability; iteration count alone is not a
-selection criterion. The exporter supports `--adapter-gain` from 0 to 1:
-gain 0 reproduces the frozen baseline exactly; intermediate gains permit a
-validation-only strength sweep without retraining. First assess raw references.
-The existing high-level
-`--reference-mode wm` path can then be tested as a separate ablation; do not
-assume the reference model improves clean mocap inputs.
-
-The initial adapter was checked against the original TWIST JIT: CPU actor
-output max difference was zero, and a 380-frame MuJoCo walk gave exactly the
-same tracking metrics. This is an initialization property, not a guarantee
-about later trained checkpoints.
-
-For paired screening, `tools/compare_twist_adapter_jit.py` starts its own
-Redis instance and runs every supplied JIT on every supplied clip. For example:
-
-```bash
-python tools/compare_twist_adapter_jit.py \
-  --jit base=legged_gym/logs/g1_stu_rl/0529_twist_rlbcstu/traced/0529_twist_rlbcstu-36500-jit.pt \
-  --jit candidate=/path/to/exported-adapter-jit.pt \
-  --motion 'track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl=5.60' \
-  --output /tmp/twist_paired_screen
-```
-
-A 200-update, 256-environment full-corpus pilot completed successfully, but
-its gain-1 export regressed on several validation clips. Treat that checkpoint
-as a diagnostic only. Do not start the 30,000-update run above until the
-adapter update and held-out screening are improved.
+This four-clip result is a screen, not proof of overall generalization. A
+broader validation split and more seeds are needed before claiming a gain
+over frozen TWIST.

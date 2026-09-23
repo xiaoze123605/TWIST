@@ -50,6 +50,7 @@ from rsl_rl.algorithms import (
     PPO,
     PPOAnyAdapter,
     PPOAny2Track,
+    PPOTwistBaselineAdapter,
     PPOAnyAdapterOpenTrack,
     PPODTERA,
 )
@@ -437,6 +438,7 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/branch_balance_ratio'] = anyadapter_metrics.get("branch_balance_ratio", 0.0)
             wandb_dict['AnyAdapter/branch_cosine_similarity'] = anyadapter_metrics.get("branch_cosine_similarity", 0.0)
             wandb_dict['AnyAdapter/adapter_reg_loss'] = anyadapter_metrics.get("adapter_reg_loss", 0.0)
+            wandb_dict['AnyAdapter/adapter_tail_loss'] = anyadapter_metrics.get("adapter_tail_loss", 0.0)
             wandb_dict['AnyAdapter/effective_adapter_reg_coef'] = anyadapter_metrics.get("effective_adapter_reg_coef", 0.0)
             wandb_dict['AnyAdapter/residual_saturation_penalty'] = anyadapter_metrics.get("residual_saturation_penalty", 0.0)
             wandb_dict['AnyAdapter/adapter_bias_reg_loss'] = anyadapter_metrics.get("adapter_bias_reg_loss", 0.0)
@@ -470,6 +472,7 @@ class OnPolicyRunnerMimic:
                 f"""{'AnyAdapter branch balance:':>{pad}} {anyadapter_metrics.get('branch_balance_ratio', 0.0):.6f}\n"""
                 f"""{'AnyAdapter branch cosine:':>{pad}} {anyadapter_metrics.get('branch_cosine_similarity', 0.0):.6f}\n"""
                 f"""{'AnyAdapter adapter reg:':>{pad}} {anyadapter_metrics.get('adapter_reg_loss', 0.0):.6f}\n"""
+                f"""{'AnyAdapter tail reg:':>{pad}} {anyadapter_metrics.get('adapter_tail_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter effective reg:':>{pad}} {anyadapter_metrics.get('effective_adapter_reg_coef', 0.0):.6f}\n"""
                 f"""{'AnyAdapter saturation reg:':>{pad}} {anyadapter_metrics.get('residual_saturation_penalty', 0.0):.6f}\n"""
                 f"""{'AnyAdapter bias reg:':>{pad}} {anyadapter_metrics.get('adapter_bias_reg_loss', 0.0):.6f}\n"""
@@ -681,7 +684,8 @@ class OnPolicyRunnerMimic:
             state_dict['wm_optimizer_state_dict'] = self.alg.wm_optimizer.state_dict()
         if hasattr(self.alg, "risk_optimizer"):
             state_dict['risk_optimizer_state_dict'] = self.alg.risk_optimizer.state_dict()
-        if getattr(self.alg.actor_critic, 'is_dtera', False):
+        if (getattr(self.alg.actor_critic, 'is_dtera', False) or
+                self.cfg.get('algorithm_class_name') == 'PPOTwistBaselineAdapter'):
             state_dict['training_config'] = dict(policy=self.policy_cfg, algorithm=self.alg_cfg,
                                                   runner=self.cfg)
         torch.save(state_dict, path)

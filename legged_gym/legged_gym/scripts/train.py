@@ -32,6 +32,7 @@ import os
 import sys
 import json
 import hashlib
+import argparse
 from pathlib import Path
 from datetime import datetime
 
@@ -46,17 +47,24 @@ from legged_gym.gym_utils import get_args, task_registry, class_to_dict
 import torch
 import wandb
 
-def train(args):
+def train(args, warm_start_checkpoint=None):
     args.headless = True
     dataset_receipt = None
-    if args.task.startswith('g1_motion_wm_dtera'):
+    anchored_adapter = args.task.startswith('g1_twist_baseline_adapter')
+    if warm_start_checkpoint is not None:
+        if not anchored_adapter or args.resume or args.resumeid:
+            raise ValueError('--warm-start-checkpoint requires a fresh anchored adapter run')
+        warm_start_checkpoint = Path(warm_start_checkpoint).resolve()
+        if not warm_start_checkpoint.is_file():
+            raise FileNotFoundError(warm_start_checkpoint)
+    if args.task.startswith('g1_motion_wm_dtera') or anchored_adapter:
         from tools.prepare_motion_wm_training import verify_prepared_training_yaml
         env_cfg, _ = task_registry.get_cfgs(args.task)
         selected_motion = args.motion_file or env_cfg.motion.motion_file
         dataset_receipt = verify_prepared_training_yaml(selected_motion)
     
     log_pth = LEGGED_GYM_ROOT_DIR + "/logs/{}/".format(args.proj_name) + args.exptid
-    if args.task.startswith('g1_motion_wm_dtera') and os.path.isdir(log_pth):
+    if (args.task.startswith('g1_motion_wm_dtera') or anchored_adapter) and os.path.isdir(log_pth):
         raise FileExistsError('Use a new --exptid; preserving existing run: ' + log_pth)
     os.makedirs(log_pth, exist_ok=True)
     
@@ -85,13 +93,24 @@ def train(args):
     
     env, _ = task_registry.make_env(name=args.task, args=args)
     ppo_runner, train_cfg = task_registry.make_alg_runner(log_root=log_pth, env=env, name=args.task, args=args)
-    if hasattr(env, 'motion_reference_pipeline'):
+    if warm_start_checkpoint is not None:
+        ppo_runner.load(str(warm_start_checkpoint), load_optimizer=False)
+        ppo_runner.current_learning_iteration = 0
+        ppo_runner.alg.counter = 0
+        env.global_counter = 0
+        env.total_env_steps_counter = 0
+    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter:
         import pose.utils.motion_lib_pkl as motion_module
-        paths = [env.cfg.motion.motion_file, env.cfg.motion_wm.checkpoint,
-                 train_cfg.policy.base_actor_jit_path]
+        paths = [env.cfg.motion.motion_file, train_cfg.policy.base_actor_jit_path]
+        if hasattr(env.cfg, 'motion_wm'):
+            paths.append(env.cfg.motion_wm.checkpoint)
         if dataset_receipt is not None:
             paths.append(dataset_receipt)
+        if warm_start_checkpoint is not None:
+            paths.append(warm_start_checkpoint)
         manifest = dict(task=args.task, seed=args.seed, num_envs=env.num_envs,
+                        warm_start_checkpoint=str(warm_start_checkpoint)
+                        if warm_start_checkpoint is not None else None,
                         motion_library=motion_module.__file__, control_dt=env.dt,
                         loaded_motions=env._motion_lib.num_motions(),
                         minimum_reference_remaining_time=getattr(
@@ -102,9 +121,13 @@ def train(args):
                         policy=ppo_runner.policy_cfg, algorithm=ppo_runner.alg_cfg,
                         runner=ppo_runner.cfg)
         Path(log_pth, 'run_manifest.json').write_text(json.dumps(manifest, indent=2, default=str) + '\n')
-    ppo_runner.learn(num_learning_iterations=train_cfg.runner.max_iterations,
+    remaining_iterations = train_cfg.runner.max_iterations
+    if anchored_adapter:
+        # The command-line limit is absolute even when resuming from a checkpoint.
+        remaining_iterations = max(0, remaining_iterations - ppo_runner.current_learning_iteration)
+    ppo_runner.learn(num_learning_iterations=remaining_iterations,
                      init_at_random_ep_len=getattr(train_cfg.runner, 'init_at_random_ep_len', True))
-    if hasattr(env, 'motion_reference_pipeline'):
+    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter:
         completion = dict(completed_iterations=ppo_runner.current_learning_iteration,
                           peak_torch_allocated_bytes=torch.cuda.max_memory_allocated(env.device)
                           if str(env.device).startswith('cuda') else 0,
@@ -114,5 +137,9 @@ def train(args):
     
 
 if __name__ == "__main__":
+    custom_parser = argparse.ArgumentParser(add_help=False)
+    custom_parser.add_argument('--warm-start-checkpoint')
+    custom_args, remaining_args = custom_parser.parse_known_args()
+    sys.argv = [sys.argv[0]] + remaining_args
     args = get_args()
-    train(args)
+    train(args, warm_start_checkpoint=custom_args.warm_start_checkpoint)
