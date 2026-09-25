@@ -1,0 +1,107 @@
+{
+  "raw150": {
+    "count": 8,
+    "frames": [
+      280,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400
+    ],
+    "means": {
+      "joint_rmse": 0.1336939172076708,
+      "root_velocity_rmse": 0.1611103964047642,
+      "yaw_error": 0.5910966368130817
+    },
+    "fall_count": 0,
+    "normalized_score": 0.9674628395361257,
+    "improvement_vs_raw150_percent": 0.0
+  },
+  "stable50": {
+    "count": 8,
+    "frames": [
+      280,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400
+    ],
+    "means": {
+      "joint_rmse": 0.1337787375592235,
+      "root_velocity_rmse": 0.16065773882633722,
+      "yaw_error": 0.5845848016671961
+    },
+    "fall_count": 0,
+    "normalized_score": 0.9638752973152522,
+    "improvement_vs_raw150_percent": 0.37081964022448455
+  },
+  "stable100": {
+    "count": 8,
+    "frames": [
+      280,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400
+    ],
+    "means": {
+      "joint_rmse": 0.13357713785671985,
+      "root_velocity_rmse": 0.16030029144324565,
+      "yaw_error": 0.5922733588193146
+    },
+    "fall_count": 0,
+    "normalized_score": 0.9661596812933371,
+    "improvement_vs_raw150_percent": 0.13469853202976445
+  },
+  "fast50": {
+    "count": 8,
+    "frames": [
+      280,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400
+    ],
+    "means": {
+      "joint_rmse": 0.1337167589470842,
+      "root_velocity_rmse": 0.16020506864929743,
+      "yaw_error": 0.589794152864597
+    },
+    "fall_count": 0,
+    "normalized_score": 0.9652551172047902,
+    "improvement_vs_raw150_percent": 0.2281971194256993
+  },
+  "fast100": {
+    "count": 8,
+    "frames": [
+      280,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400
+    ],
+    "means": {
+      "joint_rmse": 0.13383908344390666,
+      "root_velocity_rmse": 0.16061344540076247,
+      "yaw_error": 0.6055016840642717
+    },
+    "fall_count": 0,
+    "normalized_score": 0.9736146369861189,
+    "improvement_vs_raw150_percent": -0.6358691206106659
+  }
+}

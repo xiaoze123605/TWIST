@@ -227,3 +227,48 @@ class G1MotionWMAnyAdapterBaselineContinueCfgPPO(
         policy_learning_rate = 1e-6
         policy_anchor_checkpoint = _BASELINE_RAW_150
         policy_anchor_coef = 10.0
+
+
+class G1MotionWMAnyAdapterStableCfg(G1MotionWMAnyAdapterBaselineRawCfg):
+    """Fixed training distribution and the deployment raw-reference path."""
+
+    class motion(G1MotionWMAnyAdapterBaselineRawCfg.motion):
+        motion_curriculum = False
+
+
+class G1MotionWMAnyAdapterStableCfgPPO(G1MotionWMAnyAdapterBaselineCfgPPO):
+    """Audited raw150 continuation with bounded actor updates."""
+
+    class runner(G1MotionWMAnyAdapterBaselineCfgPPO.runner):
+        experiment_name = "g1_motion_wm_anyadapter_stable"
+        max_iterations = 100
+        save_interval = 25
+        resume = False
+        init_at_random_ep_len = False
+
+    class policy(G1MotionWMAnyAdapterBaselineCfgPPO.policy):
+        fix_action_std = True
+
+    class algorithm(G1MotionWMAnyAdapterBaselineCfgPPO.algorithm):
+        policy_learning_rate = 1e-6
+        critic_learning_rate = 1e-4
+        kl_stop_threshold = 0.012
+        critic_warmup_iterations = 20
+        num_learning_epochs = 3
+        clip_param = 0.1
+        entropy_coef = 0.0
+        policy_anchor_checkpoint = _BASELINE_RAW_150
+        policy_anchor_coef = 10.0
+        anchor_replay_size = 16384
+        anchor_replay_batch_size = 256
+        anchor_replay_fraction = 0.2
+
+
+class G1MotionWMAnyAdapterStableFastCfgPPO(G1MotionWMAnyAdapterStableCfgPPO):
+    """Controlled actor-learning-rate comparison; other stable settings match."""
+
+    class runner(G1MotionWMAnyAdapterStableCfgPPO.runner):
+        experiment_name = "g1_motion_wm_anyadapter_stable_fast"
+
+    class algorithm(G1MotionWMAnyAdapterStableCfgPPO.algorithm):
+        policy_learning_rate = 2e-6

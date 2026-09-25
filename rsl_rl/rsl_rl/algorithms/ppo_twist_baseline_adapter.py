@@ -13,12 +13,35 @@ class PPOTwistBaselineAdapter(PPOAny2Track):
     def __init__(self, *args, adapter_tail_threshold=0.0,
                  adapter_tail_coef=0.0, freeze_world_model=False,
                  policy_anchor_checkpoint=None, policy_anchor_coef=0.0,
-                 **kwargs):
+                 anchor_replay_size=0, anchor_replay_batch_size=0,
+                 anchor_replay_fraction=0.0, **kwargs):
         super().__init__(*args, **kwargs)
         self.adapter_tail_threshold = float(adapter_tail_threshold)
         self.adapter_tail_coef = float(adapter_tail_coef)
         self.freeze_world_model = bool(freeze_world_model)
         self.policy_anchor_coef = float(policy_anchor_coef)
+        self.anchor_replay_size = int(anchor_replay_size)
+        self.anchor_replay_batch_size = int(anchor_replay_batch_size)
+        self.anchor_replay_fraction = float(anchor_replay_fraction)
+        if (self.anchor_replay_size < 0 or self.anchor_replay_batch_size < 0 or
+                not 0.0 <= self.anchor_replay_fraction <= 1.0):
+            raise ValueError("invalid anchor replay configuration")
+        if self.anchor_replay_fraction and (not self.anchor_replay_size or
+                                            not self.anchor_replay_batch_size or
+                                            not self.freeze_world_model):
+            raise ValueError("anchor replay requires a frozen encoder and nonempty bank")
+        self.anchor_replay_count = 0
+        actor = self.actor_critic
+        self.anchor_replay_base = None
+        self.anchor_replay_latent = None
+        self.anchor_replay_actions = None
+        if self.anchor_replay_size:
+            self.anchor_replay_base = torch.empty(
+                self.anchor_replay_size, actor.base_obs_dim, dtype=torch.float16)
+            self.anchor_replay_latent = torch.empty(
+                self.anchor_replay_size, actor.latent_dim, dtype=torch.float16)
+            self.anchor_replay_actions = torch.empty(
+                self.anchor_replay_size, actor.num_actions, dtype=torch.float16)
         if self.adapter_tail_threshold < 0 or self.adapter_tail_coef < 0:
             raise ValueError("adapter tail threshold and coefficient must be non-negative")
         if self.policy_anchor_coef < 0:
@@ -46,8 +69,69 @@ class PPOTwistBaselineAdapter(PPOAny2Track):
         with torch.no_grad():
             anchor_mean = self.anchor_policy.actor_mean(observations)
         difference = policy_mean - anchor_mean
-        return (self.policy_anchor_coef * difference.square().mean(),
-                difference.abs().mean())
+        penalty = difference.square().mean()
+        if self.anchor_replay_count and self.anchor_replay_fraction:
+            indices = torch.randint(
+                self.anchor_replay_count, (self.anchor_replay_batch_size,))
+            base = self.anchor_replay_base[indices].to(
+                device=policy_mean.device, dtype=policy_mean.dtype)
+            latent = self.anchor_replay_latent[indices].to(
+                device=policy_mean.device, dtype=policy_mean.dtype)
+            target = self.anchor_replay_actions[indices].to(
+                device=policy_mean.device, dtype=policy_mean.dtype)
+            replay_mean = self.actor_critic.layerwise_actor(base, latent)
+            replay_penalty = (replay_mean - target).square().mean()
+            penalty = ((1.0 - self.anchor_replay_fraction) * penalty +
+                       self.anchor_replay_fraction * replay_penalty)
+        return self.policy_anchor_coef * penalty, difference.abs().mean()
+
+    def _collect_anchor_replay(self):
+        if not self.anchor_replay_size or self.anchor_replay_count >= self.anchor_replay_size:
+            return
+        observations = self.storage.observations.flatten(0, 1)
+        take = min(512, self.anchor_replay_size - self.anchor_replay_count)
+        indices = torch.randperm(observations.shape[0], device=observations.device)[:take]
+        with torch.no_grad():
+            base, history = self.actor_critic.split_obs(observations[indices])
+            latent = self.actor_critic.encode_history_for_policy(history)
+            teacher = self.anchor_policy.layerwise_actor(base, latent)
+            start, end = self.anchor_replay_count, self.anchor_replay_count + take
+            self.anchor_replay_base[start:end] = base.to(
+                device="cpu", dtype=torch.float16)
+            self.anchor_replay_latent[start:end] = latent.to(
+                device="cpu", dtype=torch.float16)
+            self.anchor_replay_actions[start:end] = teacher.to(
+                device="cpu", dtype=torch.float16)
+            self.anchor_replay_count = end
+
+    def on_save_checkpoint(self):
+        if not self.anchor_replay_size:
+            return {}
+        count = self.anchor_replay_count
+        return dict(anchor_replay_count=count,
+                    anchor_replay_base=self.anchor_replay_base[:count].clone(),
+                    anchor_replay_latent=self.anchor_replay_latent[:count].clone(),
+                    anchor_replay_actions=self.anchor_replay_actions[:count].clone())
+
+    def on_load_checkpoint(self, checkpoint):
+        if not self.anchor_replay_size or "anchor_replay_count" not in checkpoint:
+            return
+        count = int(checkpoint["anchor_replay_count"])
+        if not 0 <= count <= self.anchor_replay_size:
+            raise ValueError("invalid anchor replay count in checkpoint")
+        for name in ("base", "latent", "actions"):
+            source = checkpoint[f"anchor_replay_{name}"]
+            destination = getattr(self, f"anchor_replay_{name}")
+            if source.shape != destination[:count].shape:
+                raise ValueError(f"invalid anchor replay {name} shape")
+            destination[:count] = source.cpu()
+        self.anchor_replay_count = count
+
+    def update(self):
+        self._collect_anchor_replay()
+        result = super().update()
+        self.anyadapter_metrics["anchor_replay_count"] = self.anchor_replay_count
+        return result
 
     def _adapter_regularization(self, delta):
         base_loss = delta.square().mean()

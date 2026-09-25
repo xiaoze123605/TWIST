@@ -55,12 +55,13 @@ def train(args, warm_start_checkpoint=None):
     guarded_clean_pilot = args.task.startswith('g1_motion_wm_anyadapter_clean_guarded')
     baseline_motion_pilot = args.task.startswith('g1_motion_wm_anyadapter_baseline_pilot')
     baseline_motion_continue = args.task == 'g1_motion_wm_anyadapter_baseline_continue'
+    stable_motion_adapter = args.task.startswith('g1_motion_wm_anyadapter_stable')
     audited_training = (args.task.startswith('g1_motion_wm_dtera') or anchored_adapter or
                         clean_motion_adapter or baseline_motion_pilot or
-                        baseline_motion_continue)
+                        baseline_motion_continue or stable_motion_adapter)
     if warm_start_checkpoint is not None:
         if not (anchored_adapter or guarded_clean_pilot or baseline_motion_pilot or
-                baseline_motion_continue) or args.resume or args.resumeid:
+                baseline_motion_continue or stable_motion_adapter) or args.resume or args.resumeid:
             raise ValueError('--warm-start-checkpoint requires a fresh guarded adapter run')
         warm_start_checkpoint = Path(warm_start_checkpoint).resolve()
         if not warm_start_checkpoint.is_file():
@@ -87,6 +88,31 @@ def train(args, warm_start_checkpoint=None):
                 not source_motion or
                 Path(source_motion).resolve() != Path(target_motion).resolve()):
             raise ValueError('Motion-WM adapter pilot requires the matching audited source dataset')
+    if stable_motion_adapter:
+        stable_env_cfg, stable_train_cfg = task_registry.get_cfgs(args.task)
+        if warm_start_checkpoint is not None:
+            anchor = Path(stable_train_cfg.algorithm.policy_anchor_checkpoint).resolve()
+            if warm_start_checkpoint != anchor:
+                raise ValueError('Stable run must warm-start from raw150 anchor')
+            source_manifest = warm_start_checkpoint.parent / 'run_manifest.json'
+            if not source_manifest.is_file():
+                raise ValueError('Stable run requires audited raw150 source')
+            source = json.loads(source_manifest.read_text())
+            if source.get('task') != 'g1_motion_wm_anyadapter_baseline_pilot_raw':
+                raise ValueError('Stable run source task must be baseline raw pilot')
+        elif args.resumeid:
+            source_manifest = (Path(LEGGED_GYM_ROOT_DIR) / 'logs' /
+                               args.proj_name / args.resumeid / 'run_manifest.json')
+            if not source_manifest.is_file():
+                raise ValueError('Stable resume requires an audited source run')
+            source = json.loads(source_manifest.read_text())
+            if source.get('task') != args.task:
+                raise ValueError('Stable resume must use the same task')
+        else:
+            raise ValueError('Stable run requires --warm-start-checkpoint or --resumeid')
+        source_motion = source.get('environment', {}).get('motion', {}).get('motion_file')
+        if not source_motion or Path(source_motion).resolve() != Path(stable_env_cfg.motion.motion_file).resolve():
+            raise ValueError('Stable run source motion dataset mismatch')
     if args.task == 'g1_twist_baseline_adapter_refine':
         if warm_start_checkpoint is None and not (args.resume or args.resumeid):
             raise ValueError('refinement requires --warm-start-checkpoint or --resumeid')
@@ -135,7 +161,8 @@ def train(args, warm_start_checkpoint=None):
     
     wandb_project = f"{robot_type}_mimic"
     wandb_dir = (log_pth if anchored_adapter or clean_motion_adapter or
-                 baseline_motion_pilot or baseline_motion_continue else "../../logs")
+                 baseline_motion_pilot or baseline_motion_continue or
+                 stable_motion_adapter else "../../logs")
     wandb.init(project=wandb_project, name=args.exptid, mode=mode, dir=wandb_dir)
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot_config.py", policy="now")
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot.py", policy="now")
@@ -152,7 +179,7 @@ def train(args, warm_start_checkpoint=None):
         ppo_runner.alg.counter = 0
         env.global_counter = 0
         env.total_env_steps_counter = 0
-    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter:
+    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter or stable_motion_adapter:
         import pose.utils.motion_lib_pkl as motion_module
         paths = [env.cfg.motion.motion_file, train_cfg.policy.base_actor_jit_path]
         if hasattr(env.cfg, 'motion_wm'):
@@ -186,12 +213,13 @@ def train(args, warm_start_checkpoint=None):
                         runner=ppo_runner.cfg)
         Path(log_pth, 'run_manifest.json').write_text(json.dumps(manifest, indent=2, default=str) + '\n')
     remaining_iterations = train_cfg.runner.max_iterations
-    if anchored_adapter or clean_motion_adapter or baseline_motion_pilot or baseline_motion_continue:
+    if (anchored_adapter or clean_motion_adapter or baseline_motion_pilot or
+            baseline_motion_continue or stable_motion_adapter):
         # The command-line limit is absolute even when resuming from a checkpoint.
         remaining_iterations = max(0, remaining_iterations - ppo_runner.current_learning_iteration)
     ppo_runner.learn(num_learning_iterations=remaining_iterations,
                      init_at_random_ep_len=getattr(train_cfg.runner, 'init_at_random_ep_len', True))
-    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter:
+    if hasattr(env, 'motion_reference_pipeline') or anchored_adapter or stable_motion_adapter:
         completion = dict(completed_iterations=ppo_runner.current_learning_iteration,
                           peak_torch_allocated_bytes=torch.cuda.max_memory_allocated(env.device)
                           if str(env.device).startswith('cuda') else 0,

@@ -33,6 +33,7 @@ import os
 import json
 from collections import deque
 import statistics
+import random
 from rich import print
 # from torch.utils.tensorboard import SummaryWriter
 import torch
@@ -457,6 +458,10 @@ class OnPolicyRunnerMimic:
             wandb_dict['AnyAdapter/mean_abs_delta_action'] = anyadapter_metrics.get("mean_abs_delta_action", 0.0)
             wandb_dict['AnyAdapter/surrogate_loss'] = anyadapter_metrics.get("surrogate_loss", locs['mean_surrogate_loss'])
             wandb_dict['AnyAdapter/value_loss'] = anyadapter_metrics.get("value_loss", locs['mean_value_loss'])
+            for key in ('policy_kl', 'rejected_actor_updates',
+                        'warmup_actor_updates', 'anchor_replay_count'):
+                if key in anyadapter_metrics:
+                    wandb_dict[f'AnyAdapter/{key}'] = anyadapter_metrics[key]
             anyadapter_log_string = (
                 f"""{'AnyAdapter wm loss:':>{pad}} {anyadapter_metrics.get('world_model_loss', 0.0):.6f}\n"""
                 f"""{'AnyAdapter wm skipped:':>{pad}} {anyadapter_metrics.get('world_model_loss_skipped', 0.0):.0f}\n"""
@@ -692,6 +697,14 @@ class OnPolicyRunnerMimic:
                 self.cfg.get('algorithm_class_name') == 'PPOTwistBaselineAdapter'):
             state_dict['training_config'] = dict(policy=self.policy_cfg, algorithm=self.alg_cfg,
                                                   runner=self.cfg)
+        state_dict["algorithm_counter"] = self.alg.counter
+        state_dict["rng_state"] = dict(
+            python=random.getstate(), numpy=np.random.get_state(),
+            torch=torch.get_rng_state(),
+            cuda=torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+        )
+        if hasattr(self.alg, "on_save_checkpoint"):
+            state_dict.update(self.alg.on_save_checkpoint())
         torch.save(state_dict, path)
 
     def load(self, path, load_optimizer=True):
@@ -756,6 +769,16 @@ class OnPolicyRunnerMimic:
         self.current_learning_iteration = int(
             loaded_dict.get("iter", filename_iteration)
         )
+        self.alg.counter = int(loaded_dict.get(
+            "algorithm_counter", self.current_learning_iteration))
+        if load_optimizer and "rng_state" in loaded_dict:
+            state = loaded_dict["rng_state"]
+            random.setstate(state["python"])
+            np.random.set_state(state["numpy"])
+            torch.set_rng_state(state["torch"].cpu())
+            if state["cuda"] is not None and torch.cuda.is_available():
+                if len(state["cuda"]) == torch.cuda.device_count():
+                    torch.cuda.set_rng_state_all([item.cpu() for item in state["cuda"]])
         self.env.global_counter = self.current_learning_iteration * 24
         self.env.total_env_steps_counter = self.current_learning_iteration * 24
         print("*" * 80)

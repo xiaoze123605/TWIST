@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,6 +25,9 @@ class PPOAny2Track(PPOAnyAdapter):
         *args,
         world_model_learning_rate: float = 1e-4,
         policy_learning_rate: float = 1e-4,
+        critic_learning_rate: float = None,
+        kl_stop_threshold: float = None,
+        critic_warmup_iterations: int = 0,
         world_model_sequence_length: int = 20,
         world_model_num_epochs: int = 1,
         world_model_component_weights=(5.0, 5.0, 1.0, 0.5),
@@ -38,6 +43,17 @@ class PPOAny2Track(PPOAnyAdapter):
         self.world_model_sequence_length = int(world_model_sequence_length)
         self.world_model_num_epochs = int(world_model_num_epochs)
         self.policy_learning_rate = float(policy_learning_rate)
+        self.critic_learning_rate = (None if critic_learning_rate is None
+                                     else float(critic_learning_rate))
+        self.kl_stop_threshold = (None if kl_stop_threshold is None
+                                  else float(kl_stop_threshold))
+        self.critic_warmup_iterations = int(critic_warmup_iterations)
+        if self.critic_learning_rate is not None and self.critic_learning_rate <= 0:
+            raise ValueError("critic_learning_rate must be positive")
+        if self.kl_stop_threshold is not None and self.kl_stop_threshold <= 0:
+            raise ValueError("kl_stop_threshold must be positive")
+        if self.critic_warmup_iterations < 0:
+            raise ValueError("critic_warmup_iterations must be non-negative")
         self.world_model_learning_rate = float(world_model_learning_rate)
         self.action_std_min = float(action_std_min)
         self.action_std_max = float(action_std_max)
@@ -54,11 +70,23 @@ class PPOAny2Track(PPOAnyAdapter):
             "dof_vel": float(world_model_component_weights[3]),
         }
         self.learning_rate = float(policy_learning_rate)
-        self.ppo_optimizer = torch.optim.Adam(
-            self.ppo_params,
-            lr=float(policy_learning_rate),
-            weight_decay=self.weight_decay,
-        )
+        self.actor_params = [p for p in self.actor_critic.adapter.parameters()
+                             if p.requires_grad]
+        std = getattr(self.actor_critic, "std", None)
+        if std is not None and std.requires_grad:
+            self.actor_params.append(std)
+        self.critic_params = [p for p in self.actor_critic.critic.parameters()
+                              if p.requires_grad]
+        if self.critic_learning_rate is None:
+            self.ppo_optimizer = torch.optim.Adam(
+                self.ppo_params, lr=float(policy_learning_rate),
+                weight_decay=self.weight_decay,
+            )
+        else:
+            self.ppo_optimizer = torch.optim.Adam([
+                {"params": self.actor_params, "lr": self.policy_learning_rate},
+                {"params": self.critic_params, "lr": self.critic_learning_rate},
+            ], weight_decay=self.weight_decay)
         self.wm_optimizer = torch.optim.Adam(
             self.wm_params,
             lr=float(world_model_learning_rate),
@@ -78,13 +106,25 @@ class PPOAny2Track(PPOAnyAdapter):
         Optimizer.load_state_dict restores the checkpoint's old learning rate.
         Keep its moment estimates, but use the current continuation config.
         """
-        for group in self.ppo_optimizer.param_groups:
-            group["lr"] = self.policy_learning_rate
+        for index, group in enumerate(self.ppo_optimizer.param_groups):
+            group["lr"] = (self.critic_learning_rate if index == 1 and
+                           self.critic_learning_rate is not None else
+                           self.policy_learning_rate)
         for group in self.wm_optimizer.param_groups:
             group["lr"] = self.world_model_learning_rate
             group["weight_decay"] = 0.0
         self.learning_rate = self.policy_learning_rate
         self._clamp_action_std()
+
+    @staticmethod
+    def _policy_kl(old_mu, old_sigma, new_mu, new_sigma):
+        with torch.no_grad():
+            return torch.sum(
+                torch.log(new_sigma / old_sigma)
+                + (old_sigma.square() + (old_mu - new_mu).square())
+                / (2.0 * new_sigma.square()) - 0.5,
+                dim=-1,
+            ).mean()
 
     def _autoregressive_world_model_loss(
         self,
@@ -252,6 +292,9 @@ class PPOAny2Track(PPOAnyAdapter):
         mean_synthetic_stand_anchor = 0.0
         mean_stand_ratio = 0.0
         mean_adapter_grad_norm = 0.0
+        mean_policy_kl = 0.0
+        rejected_actor_updates = 0
+        warmup_actor_updates = 0
 
         # The world model has already consumed next observations above.  PPO
         # only needs the current policy/critic batch, so avoid gathering a
@@ -290,6 +333,17 @@ class PPOAny2Track(PPOAnyAdapter):
             mu_batch = self.actor_critic.action_mean
             sigma_batch = self.actor_critic.action_std
             entropy_batch = self.actor_critic.entropy
+            before_kl = self._policy_kl(
+                old_mu_batch, old_sigma_batch, mu_batch, sigma_batch
+            ) if self.kl_stop_threshold is not None else None
+            train_actor = (self.counter >= self.critic_warmup_iterations and
+                           (before_kl is None or
+                            before_kl.item() <= self.kl_stop_threshold))
+            if not train_actor:
+                if self.counter < self.critic_warmup_iterations:
+                    warmup_actor_updates += 1
+                else:
+                    rejected_actor_updates += 1
 
             if self.desired_kl is not None and self.schedule == "adaptive":
                 with torch.inference_mode():
@@ -376,9 +430,41 @@ class PPOAny2Track(PPOAnyAdapter):
 
             self.ppo_optimizer.zero_grad()
             loss.backward()
-            adapter_grad_norm = self._grad_norm(self.actor_critic.adapter.parameters())
-            nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
-            self.ppo_optimizer.step()
+            adapter_grad_norm = (self._grad_norm(self.actor_critic.adapter.parameters())
+                                 if train_actor else 0.0)
+            if self.critic_learning_rate is None:
+                nn.utils.clip_grad_norm_(self.ppo_params, self.max_grad_norm)
+                self.ppo_optimizer.step()
+            else:
+                if not train_actor:
+                    for parameter in self.actor_params:
+                        parameter.grad = None
+                actor_snapshot = None
+                if train_actor and self.kl_stop_threshold is not None:
+                    actor_snapshot = [
+                        (parameter, parameter.detach().clone(),
+                         deepcopy(self.ppo_optimizer.state[parameter]))
+                        for parameter in self.actor_params
+                    ]
+                nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
+                nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
+                self.ppo_optimizer.step()
+                if actor_snapshot is not None:
+                    with torch.no_grad():
+                        new_mean = self.actor_critic.actor_mean(obs_batch)
+                    after_kl = self._policy_kl(
+                        old_mu_batch, old_sigma_batch, new_mean, self.actor_critic.std
+                    )
+                    if after_kl.item() > self.kl_stop_threshold:
+                        with torch.no_grad():
+                            for parameter, value, optimizer_state in actor_snapshot:
+                                parameter.copy_(value)
+                                self.ppo_optimizer.state[parameter] = optimizer_state
+                        rejected_actor_updates += 1
+                    else:
+                        before_kl = after_kl
+                if before_kl is not None:
+                    mean_policy_kl += before_kl.item()
             self._clamp_action_std()
 
             mean_value_loss += float(value_loss.detach().cpu())
@@ -425,6 +511,9 @@ class PPOAny2Track(PPOAnyAdapter):
             "surrogate_loss": mean_surrogate_loss / num_updates,
             "value_loss": mean_value_loss / num_updates,
             "entropy": mean_entropy / num_updates,
+            "policy_kl": mean_policy_kl / num_updates,
+            "rejected_actor_updates": rejected_actor_updates,
+            "warmup_actor_updates": warmup_actor_updates,
         }
         self.update_counter()
         return (

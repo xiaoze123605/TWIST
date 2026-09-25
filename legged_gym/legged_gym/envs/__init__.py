@@ -83,6 +83,8 @@ from .g1.g1_motion_wm_anyadapter_config import (
     G1MotionWMAnyAdapterBaselineCfg, G1MotionWMAnyAdapterBaselineRawCfg,
     G1MotionWMAnyAdapterBaselineCfgPPO,
     G1MotionWMAnyAdapterBaselineContinueCfgPPO,
+    G1MotionWMAnyAdapterStableCfg, G1MotionWMAnyAdapterStableCfgPPO,
+    G1MotionWMAnyAdapterStableFastCfgPPO,
 )
 task_registry.register("g1_motion_wm_anyadapter", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterCfg(), G1MotionWMAnyAdapterCfgPPO())
 task_registry.register("g1_motion_wm_anyadapter_clean", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterCleanCfg(), G1MotionWMAnyAdapterCleanCfgPPO())
@@ -92,6 +94,8 @@ task_registry.register("g1_motion_wm_anyadapter_clean_guarded_raw", G1MotionWMAn
 task_registry.register("g1_motion_wm_anyadapter_baseline_pilot", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterBaselineCfg(), G1MotionWMAnyAdapterBaselineCfgPPO())
 task_registry.register("g1_motion_wm_anyadapter_baseline_pilot_raw", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterBaselineRawCfg(), G1MotionWMAnyAdapterBaselineCfgPPO())
 task_registry.register("g1_motion_wm_anyadapter_baseline_continue", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterBaselineRawCfg(), G1MotionWMAnyAdapterBaselineContinueCfgPPO())
+task_registry.register("g1_motion_wm_anyadapter_stable", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterStableCfg(), G1MotionWMAnyAdapterStableCfgPPO())
+task_registry.register("g1_motion_wm_anyadapter_stable_fast", G1MotionWMAnyAdapter, G1MotionWMAnyAdapterStableCfg(), G1MotionWMAnyAdapterStableFastCfgPPO())
 from .g1.g1_motion_wm_dtera import G1MotionWMDTERAV2
 from .g1.g1_motion_wm_dtera_config import G1MotionWMDTERAV2Cfg, G1MotionWMDTERAV2CfgPPO
 task_registry.register("g1_motion_wm_dtera_v2", G1MotionWMDTERAV2, G1MotionWMDTERAV2Cfg(), G1MotionWMDTERAV2CfgPPO())
