@@ -82,10 +82,14 @@ class PPOTwistBaselineAdapter(PPOAny2Track):
             for name, (start, end) in actor.wm_component_splits.items():
                 if self.world_model_loss_type == "mse":
                     per_dim = (prediction[:, start:end] - target[:, start:end]).square()
-                else:
+                elif self.world_model_loss_type == "l1":
+                    per_dim = (prediction[:, start:end] - target[:, start:end]).abs()
+                elif self.world_model_loss_type == "smooth_l1":
                     per_dim = F.smooth_l1_loss(
                         prediction[:, start:end], target[:, start:end], reduction="none",
                     )
+                else:
+                    raise ValueError(f"Unsupported world_model_loss_type: {self.world_model_loss_type}")
                 sums[name] = sums[name] + (per_dim.mean(-1, keepdim=True) * valid).sum()
 
             # Online history records the state before the command is sent.

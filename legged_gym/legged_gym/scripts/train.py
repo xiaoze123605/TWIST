@@ -51,12 +51,42 @@ def train(args, warm_start_checkpoint=None):
     args.headless = True
     dataset_receipt = None
     anchored_adapter = args.task.startswith('g1_twist_baseline_adapter')
+    clean_motion_adapter = args.task.startswith('g1_motion_wm_anyadapter_clean')
+    guarded_clean_pilot = args.task.startswith('g1_motion_wm_anyadapter_clean_guarded')
+    baseline_motion_pilot = args.task.startswith('g1_motion_wm_anyadapter_baseline_pilot')
+    baseline_motion_continue = args.task == 'g1_motion_wm_anyadapter_baseline_continue'
+    audited_training = (args.task.startswith('g1_motion_wm_dtera') or anchored_adapter or
+                        clean_motion_adapter or baseline_motion_pilot or
+                        baseline_motion_continue)
     if warm_start_checkpoint is not None:
-        if not anchored_adapter or args.resume or args.resumeid:
-            raise ValueError('--warm-start-checkpoint requires a fresh anchored adapter run')
+        if not (anchored_adapter or guarded_clean_pilot or baseline_motion_pilot or
+                baseline_motion_continue) or args.resume or args.resumeid:
+            raise ValueError('--warm-start-checkpoint requires a fresh guarded adapter run')
         warm_start_checkpoint = Path(warm_start_checkpoint).resolve()
         if not warm_start_checkpoint.is_file():
             raise FileNotFoundError(warm_start_checkpoint)
+    if guarded_clean_pilot or baseline_motion_pilot or baseline_motion_continue:
+        if warm_start_checkpoint is None:
+            raise ValueError('Motion-WM adapter pilot requires --warm-start-checkpoint')
+        pilot_env_cfg, pilot_train_cfg = task_registry.get_cfgs(args.task)
+        anchor = Path(pilot_train_cfg.algorithm.policy_anchor_checkpoint).resolve()
+        if warm_start_checkpoint != anchor:
+            raise ValueError('Motion-WM adapter pilot must warm-start from its policy anchor')
+        source_manifest = warm_start_checkpoint.parent / 'run_manifest.json'
+        if not source_manifest.is_file():
+            raise ValueError('Motion-WM adapter pilot requires an audited source run')
+        source = json.loads(source_manifest.read_text())
+        source_motion = source.get('environment', {}).get('motion', {}).get('motion_file')
+        target_motion = pilot_env_cfg.motion.motion_file
+        required_source_task = (
+            'g1_motion_wm_anyadapter_clean' if guarded_clean_pilot else
+            'g1_motion_wm_anyadapter_baseline_pilot_raw' if baseline_motion_continue else
+            'g1_twist_baseline_adapter_refine'
+        )
+        if (source.get('task') != required_source_task or
+                not source_motion or
+                Path(source_motion).resolve() != Path(target_motion).resolve()):
+            raise ValueError('Motion-WM adapter pilot requires the matching audited source dataset')
     if args.task == 'g1_twist_baseline_adapter_refine':
         if warm_start_checkpoint is None and not (args.resume or args.resumeid):
             raise ValueError('refinement requires --warm-start-checkpoint or --resumeid')
@@ -65,14 +95,27 @@ def train(args, warm_start_checkpoint=None):
             anchor = Path(refine_cfg.algorithm.policy_anchor_checkpoint).resolve()
             if warm_start_checkpoint != anchor:
                 raise ValueError('refinement warm start must match the policy anchor checkpoint')
-    if args.task.startswith('g1_motion_wm_dtera') or anchored_adapter:
+    if audited_training:
         from tools.prepare_motion_wm_training import verify_prepared_training_yaml
         env_cfg, _ = task_registry.get_cfgs(args.task)
         selected_motion = args.motion_file or env_cfg.motion.motion_file
         dataset_receipt = verify_prepared_training_yaml(selected_motion)
+    if clean_motion_adapter and (args.resume or args.resumeid):
+        if not args.resumeid:
+            raise ValueError('clean Motion-WM adapter resume requires --resumeid')
+        source_manifest = (Path(LEGGED_GYM_ROOT_DIR) / 'logs' /
+                           args.proj_name / args.resumeid / 'run_manifest.json')
+        if not source_manifest.is_file():
+            raise ValueError('clean Motion-WM adapter may resume only its own audited runs')
+        source = json.loads(source_manifest.read_text())
+        source_motion = source.get('environment', {}).get('motion', {}).get('motion_file')
+        if (source.get('task') != args.task or
+                not source_motion or
+                Path(source_motion).resolve() != Path(selected_motion).resolve()):
+            raise ValueError('clean Motion-WM adapter may resume only its own audited runs')
     
     log_pth = LEGGED_GYM_ROOT_DIR + "/logs/{}/".format(args.proj_name) + args.exptid
-    if (args.task.startswith('g1_motion_wm_dtera') or anchored_adapter) and os.path.isdir(log_pth):
+    if audited_training and os.path.isdir(log_pth):
         raise FileExistsError('Use a new --exptid; preserving existing run: ' + log_pth)
     os.makedirs(log_pth, exist_ok=True)
     
@@ -91,7 +134,8 @@ def train(args, warm_start_checkpoint=None):
     robot_type = args.task.split("_")[0]
     
     wandb_project = f"{robot_type}_mimic"
-    wandb_dir = log_pth if anchored_adapter else "../../logs"
+    wandb_dir = (log_pth if anchored_adapter or clean_motion_adapter or
+                 baseline_motion_pilot or baseline_motion_continue else "../../logs")
     wandb.init(project=wandb_project, name=args.exptid, mode=mode, dir=wandb_dir)
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot_config.py", policy="now")
     # wandb.save(LEGGED_GYM_ENVS_DIR + "/base/legged_robot.py", policy="now")
@@ -142,7 +186,7 @@ def train(args, warm_start_checkpoint=None):
                         runner=ppo_runner.cfg)
         Path(log_pth, 'run_manifest.json').write_text(json.dumps(manifest, indent=2, default=str) + '\n')
     remaining_iterations = train_cfg.runner.max_iterations
-    if anchored_adapter:
+    if anchored_adapter or clean_motion_adapter or baseline_motion_pilot or baseline_motion_continue:
         # The command-line limit is absolute even when resuming from a checkpoint.
         remaining_iterations = max(0, remaining_iterations - ppo_runner.current_learning_iteration)
     ppo_runner.learn(num_learning_iterations=remaining_iterations,

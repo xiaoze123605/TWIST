@@ -1,4 +1,4 @@
-"""Select a TWIST adapter checkpoint from paired held-out MuJoCo results."""
+"""Select from paired MuJoCo screens, optionally requiring full-motion validation."""
 
 import argparse
 import json
@@ -11,7 +11,8 @@ METRICS = ("joint_rmse", "root_error", "yaw_error", "root_velocity_rmse")
 
 
 def select(rows, baseline_label="base", max_joint_regression=0.02,
-           max_velocity_regression=0.02):
+           max_velocity_regression=0.02, long_rows=None,
+           max_long_yaw_regression=0.0):
     grouped = defaultdict(dict)
     for row in rows:
         motion, label = row["motion"], row["label"]
@@ -31,6 +32,19 @@ def select(rows, baseline_label="base", max_joint_regression=0.02,
                 for key in METRICS}
     if any(value <= 0 for value in baseline.values()):
         raise ValueError("baseline metric must be positive")
+    long_grouped = defaultdict(dict)
+    if long_rows is not None:
+        for row in long_rows:
+            motion, label = row["motion"], row["label"]
+            if label in long_grouped[motion]:
+                raise ValueError(f"duplicate long {label} result for {motion}")
+            if any(not math.isfinite(float(row[key])) or float(row[key]) < 0
+                   for key in ("joint_rmse", "root_velocity_rmse", "yaw_error")):
+                raise ValueError(f"invalid long result for {label} on {motion}")
+            long_grouped[motion][label] = row
+        if not long_grouped or any(baseline_label not in labels
+                                   for labels in long_grouped.values()):
+            raise ValueError("every long motion needs a baseline result")
     candidates = []
     for label in sorted(labels - {baseline_label}):
         means = {key: sum(grouped[m][label][key] for m in motions) / len(motions)
@@ -45,10 +59,35 @@ def select(rows, baseline_label="base", max_joint_regression=0.02,
         accepted = (falls <= base_falls and max_joint_ratio <= 1.05 and
                     ratios["joint_rmse"] <= 1 + max_joint_regression and
                     ratios["root_velocity_rmse"] <= 1 + max_velocity_regression)
+        long_accepted = None
+        long_ratios = {}
+        if long_rows is not None:
+            long_accepted = True
+            for motion, motion_rows in long_grouped.items():
+                candidate = motion_rows.get(label)
+                if candidate is None:
+                    long_accepted = False
+                    continue
+                base = motion_rows[baseline_label]
+                motion_ratios = {
+                    key: candidate[key] / max(base[key], 1e-9)
+                    for key in ("joint_rmse", "root_velocity_rmse", "yaw_error")
+                }
+                long_ratios[motion] = motion_ratios
+                long_accepted &= (
+                    (not candidate.get("fall_proxy", False) or
+                     bool(base.get("fall_proxy", False))) and
+                    motion_ratios["joint_rmse"] <= 1.05 and
+                    motion_ratios["root_velocity_rmse"] <= 1.05 and
+                    motion_ratios["yaw_error"] <= 1 + max_long_yaw_regression
+                )
+            accepted &= long_accepted
         score = sum(ratios.values()) / len(ratios)
         candidates.append(dict(label=label, accepted=accepted, score=score,
                                means=means, ratios=ratios, falls=falls,
-                               max_joint_ratio=max_joint_ratio))
+                               max_joint_ratio=max_joint_ratio,
+                               long_accepted=long_accepted,
+                               long_ratios=long_ratios))
     accepted = [row for row in candidates if row["accepted"]]
     winner = min(accepted, key=lambda row: row["score"])["label"] if accepted else None
     return dict(motions=motions, baseline=baseline, candidates=candidates,
@@ -60,8 +99,12 @@ def main():
     parser.add_argument("results", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--baseline-label", default="base")
+    parser.add_argument("--long-results", type=Path,
+                        help="Paired full-motion results; each candidate must pass yaw and stability limits")
     args = parser.parse_args()
-    result = select(json.loads(args.results.read_text()), args.baseline_label)
+    result = select(json.loads(args.results.read_text()), args.baseline_label,
+                    long_rows=json.loads(args.long_results.read_text())
+                    if args.long_results else None)
     encoded = json.dumps(result, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,79 @@
+{
+  "motions": [
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/13.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/17.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/20.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/59.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/12_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/17_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/6_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/47_seg03.pkl"
+  ],
+  "baseline": {
+    "joint_rmse": 0.13537213334821976,
+    "root_error": 0.27847173120277313,
+    "yaw_error": 0.528022594086205,
+    "root_velocity_rmse": 0.14801786465398314
+  },
+  "candidates": [
+    {
+      "label": "baseline_mix_100",
+      "accepted": false,
+      "score": 0.9343688628798943,
+      "means": {
+        "joint_rmse": 0.1356258660488763,
+        "root_error": 0.24332200649158867,
+        "yaw_error": 0.4619297814453465,
+        "root_velocity_rmse": 0.14609292412777272
+      },
+      "ratios": {
+        "joint_rmse": 1.0018743348012686,
+        "root_error": 0.8737763271001835,
+        "yaw_error": 0.8748295747547724,
+        "root_velocity_rmse": 0.9869952148633525
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0639513673645933,
+      "long_accepted": false,
+      "long_ratios": {
+        "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl": {
+          "joint_rmse": 1.0046816793977627,
+          "root_velocity_rmse": 1.0065599645983385,
+          "yaw_error": 1.2100215154437028
+        }
+      }
+    },
+    {
+      "label": "guarded200",
+      "accepted": true,
+      "score": 0.9661131202818543,
+      "means": {
+        "joint_rmse": 0.13531262715155407,
+        "root_error": 0.2588957367832348,
+        "yaw_error": 0.49525343470002325,
+        "root_velocity_rmse": 0.1476108394367427
+      },
+      "ratios": {
+        "joint_rmse": 0.9995604250653816,
+        "root_error": 0.9297020407242566,
+        "yaw_error": 0.9379398537994534,
+        "root_velocity_rmse": 0.9972501615383255
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.030692945898393,
+      "long_accepted": true,
+      "long_ratios": {
+        "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl": {
+          "joint_rmse": 1.0070994103130144,
+          "root_velocity_rmse": 1.006791290681335,
+          "yaw_error": 0.8022552975251697
+        }
+      }
+    }
+  ],
+  "selected_label": "guarded200"
+}

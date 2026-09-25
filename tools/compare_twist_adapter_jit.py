@@ -46,17 +46,20 @@ def free_port():
         return connection.getsockname()[1]
 
 
-def run_case(python, port, label, jit, motion_path, duration, output, seed):
+def run_case(python, port, label, jit, motion_path, duration, output, seed,
+             reference_mode='raw', trace=False):
     case_dir = output / Path(motion_path).stem / label
     case_dir.mkdir(parents=True, exist_ok=False)
     high_cmd = [python, '-u', str(HIGH), '--motion_file', motion_path,
-                '--device', 'cpu', '--steps', '1', '--reference-mode', 'raw',
+                '--device', 'cpu', '--steps', '1', '--reference-mode', reference_mode,
                 '--wait-for-sim-ready', '--sim-ready-timeout', '30',
                 '--redis-port', str(port), '--seed', str(seed)]
     low_cmd = [python, '-u', str(LOW), '--policy_path', jit, '--device', 'cpu',
                '--headless', '--sync-reference', '--sim_duration', str(duration),
                '--metrics_out', str(case_dir / 'metrics.json'),
                '--redis-port', str(port), '--seed', str(seed)]
+    if trace:
+        low_cmd.extend(['--trace_out', str(case_dir / 'frames.jsonl')])
     with (case_dir / 'high.log').open('w') as high_log, (case_dir / 'low.log').open('w') as low_log:
         high = subprocess.Popen(high_cmd, cwd=ROOT, stdout=high_log,
                                 stderr=subprocess.STDOUT)
@@ -86,6 +89,9 @@ def main():
                         help='path/to/motion.pkl=duration_seconds; repeat for more clips')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--reference-mode', choices=('raw', 'wm'), default='raw')
+    parser.add_argument('--trace', action='store_true',
+                        help='Record per-frame reference, joint and policy actions')
     args = parser.parse_args()
     if len({name for name, _ in args.jit}) != len(args.jit):
         parser.error('JIT labels must be unique')
@@ -112,7 +118,8 @@ def main():
         for motion_path, duration in args.motion:
             for label, jit in args.jit:
                 metrics = run_case(sys.executable, port, label, jit, motion_path,
-                                   duration, args.output, args.seed)
+                                   duration, args.output, args.seed,
+                                   args.reference_mode, args.trace)
                 row = dict(motion=motion_path, label=label, jit=jit, **metrics)
                 results.append(row)
                 print(f'{Path(motion_path).name:40s} {label:12s} '

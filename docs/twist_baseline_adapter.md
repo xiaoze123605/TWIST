@@ -1,5 +1,14 @@
 # Frozen TWIST + dynamics WM + AnyAdapter
 
+**2026-09-24 update:** The guarded continuation reached update 14144 and
+regressed on the paired MuJoCo screen. Do not resume that run. Its update-500
+checkpoint is the best screened checkpoint within that long run, but the
+guarded update-200 checkpoint still wins the eight-clip aggregate. The older
+Motion-WM + AnyAdapter run used a training list containing every clip in that
+eight-clip screen, so its scores on those clips cannot establish held-out
+generalization. The clean Motion-WM continuation task and audit are described
+in `docs/motion_wm_anyadapter_clean.md`.
+
 The `g1_twist_baseline_adapter` task preserves the TWIST student observation,
 reward, reset, curriculum and PD control. Its frozen 0529 JIT supplies the
 tracking policy. A layerwise AnyAdapter uses a 79-frame dynamics history; a
@@ -96,9 +105,10 @@ tools/check_twist_baseline_adapter.py
 ```
 
 The old failed pilot and its branch ablation remain under
-`reports/twist_baseline_adapter_refinement_20260923`. The new guarded pilot
-is in `legged_gym/logs/g1_twist_baseline_adapter/anchored_guarded_1600_pilot_v1_20260923`
-and `anchored_guarded_1600_pilot_v1_200_20260923`. Its online W&B run IDs
+`reports/twist_baseline_adapter_refinement_20260923`. The selected guarded
+pilot checkpoint is in
+`legged_gym/logs/g1_twist_baseline_adapter/anchored_guarded_1600_pilot_v1_200_20260923`.
+The shorter preliminary run directory was removed; its online W&B run IDs
 are `oqibv1m1` and `otc1sqku` in the `g1_mimic` project.
 
 ## Long-training instructions (W&B online)

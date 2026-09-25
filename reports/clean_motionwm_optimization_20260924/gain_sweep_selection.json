@@ -1,0 +1,211 @@
+{
+  "motions": [
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/13.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap/17.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/6_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl",
+    "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/47_seg03.pkl"
+  ],
+  "baseline": {
+    "joint_rmse": 0.13474442252551835,
+    "root_error": 0.33977424646036347,
+    "yaw_error": 0.6507949388959319,
+    "root_velocity_rmse": 0.16213685321467475
+  },
+  "candidates": [
+    {
+      "label": "c1000_g0",
+      "accepted": true,
+      "score": 1.0,
+      "means": {
+        "joint_rmse": 0.13474442252551835,
+        "root_error": 0.33977424646036347,
+        "yaw_error": 0.6507949388959319,
+        "root_velocity_rmse": 0.16213685321467475
+      },
+      "ratios": {
+        "joint_rmse": 1.0,
+        "root_error": 1.0,
+        "yaw_error": 1.0,
+        "root_velocity_rmse": 1.0
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0
+    },
+    {
+      "label": "c1000_g0.25",
+      "accepted": true,
+      "score": 1.002506956255878,
+      "means": {
+        "joint_rmse": 0.13386793595382146,
+        "root_error": 0.3411466023625571,
+        "yaw_error": 0.6598320692103294,
+        "root_velocity_rmse": 0.1619110477165265
+      },
+      "ratios": {
+        "joint_rmse": 0.9934951921922341,
+        "root_error": 1.0040390227231473,
+        "yaw_error": 1.0138862947055627,
+        "root_velocity_rmse": 0.9986073154025675
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.012678301540043
+    },
+    {
+      "label": "c1000_g0.5",
+      "accepted": false,
+      "score": 1.0307219851161755,
+      "means": {
+        "joint_rmse": 0.13494833930149197,
+        "root_error": 0.35424749989647036,
+        "yaw_error": 0.6887417427926774,
+        "root_velocity_rmse": 0.16545571625601116
+      },
+      "ratios": {
+        "joint_rmse": 1.0015133596786538,
+        "root_error": 1.042596675842515,
+        "yaw_error": 1.058308388140083,
+        "root_velocity_rmse": 1.0204695168034508
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0303807417151176
+    },
+    {
+      "label": "c1000_g0.75",
+      "accepted": false,
+      "score": 1.1221851922433148,
+      "means": {
+        "joint_rmse": 0.13773246496756275,
+        "root_error": 0.40625431105340265,
+        "yaw_error": 0.7941003818090167,
+        "root_velocity_rmse": 0.17035800439357007
+      },
+      "ratios": {
+        "joint_rmse": 1.022175629877953,
+        "root_error": 1.1956595159450805,
+        "yaw_error": 1.2202006105889533,
+        "root_velocity_rmse": 1.0507050125612727
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0501629634324015
+    },
+    {
+      "label": "c4450_g0",
+      "accepted": true,
+      "score": 1.0,
+      "means": {
+        "joint_rmse": 0.13474442252551835,
+        "root_error": 0.33977424646036347,
+        "yaw_error": 0.6507949388959319,
+        "root_velocity_rmse": 0.16213685321467475
+      },
+      "ratios": {
+        "joint_rmse": 1.0,
+        "root_error": 1.0,
+        "yaw_error": 1.0,
+        "root_velocity_rmse": 1.0
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0
+    },
+    {
+      "label": "c4450_g0.25",
+      "accepted": false,
+      "score": 0.8967279855999252,
+      "means": {
+        "joint_rmse": 0.13513074637343603,
+        "root_error": 0.27170415540451587,
+        "yaw_error": 0.5241860534099427,
+        "root_velocity_rmse": 0.15872046815283283
+      },
+      "ratios": {
+        "joint_rmse": 1.0028670860038345,
+        "root_error": 0.79966082843248,
+        "yaw_error": 0.8054550244339944,
+        "root_velocity_rmse": 0.9789290035293919
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0848336201879019
+    },
+    {
+      "label": "c4450_g0.5",
+      "accepted": false,
+      "score": 0.9017643699301638,
+      "means": {
+        "joint_rmse": 0.1420907862624831,
+        "root_error": 0.266514909153161,
+        "yaw_error": 0.5085364503843518,
+        "root_velocity_rmse": 0.15998698890621196
+      },
+      "ratios": {
+        "joint_rmse": 1.0545207259734513,
+        "root_error": 0.7843881987219753,
+        "yaw_error": 0.7814081210389859,
+        "root_velocity_rmse": 0.9867404339862431
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.329441382338606
+    },
+    {
+      "label": "c4450_g0.75",
+      "accepted": false,
+      "score": 0.9219574589298289,
+      "means": {
+        "joint_rmse": 0.15191083487613274,
+        "root_error": 0.2651947287767042,
+        "yaw_error": 0.49356447904540013,
+        "root_velocity_rmse": 0.16562682413780158
+      },
+      "ratios": {
+        "joint_rmse": 1.1273997990333393,
+        "root_error": 0.7805027353879824,
+        "yaw_error": 0.7584024545162077,
+        "root_velocity_rmse": 1.0215248467817861
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.6332674961577625
+    },
+    {
+      "label": "clean400",
+      "accepted": false,
+      "score": 1.0360085236103853,
+      "means": {
+        "joint_rmse": 0.1524408930986146,
+        "root_error": 0.35631252363734295,
+        "yaw_error": 0.6338397348384974,
+        "root_velocity_rmse": 0.16052833357527063
+      },
+      "ratios": {
+        "joint_rmse": 1.1313336035838133,
+        "root_error": 1.048674310514316,
+        "yaw_error": 0.9739469331365748,
+        "root_velocity_rmse": 0.9900792472068372
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.3979264063157897
+    },
+    {
+      "label": "guarded200",
+      "accepted": true,
+      "score": 0.9313940597581225,
+      "means": {
+        "joint_rmse": 0.13471465416386288,
+        "root_error": 0.2954242490327081,
+        "yaw_error": 0.5673228426092212,
+        "root_velocity_rmse": 0.159637797088845
+      },
+      "ratios": {
+        "joint_rmse": 0.9997790753702638,
+        "root_error": 0.8694721630915925,
+        "yaw_error": 0.8717382522545114,
+        "root_velocity_rmse": 0.9845867483161221
+      },
+      "falls": 0,
+      "max_joint_ratio": 1.0174704794693594
+    }
+  ],
+  "selected_label": "guarded200"
+}
