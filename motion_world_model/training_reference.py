@@ -64,6 +64,27 @@ class TrainingReferencePipeline:
         self.corrupted[ids] = 0
         self.processed[ids] = 0
 
+    def prefill(self, env_ids, history_frames):
+        """Warm the 25-frame rolling history with clean past references at reset.
+
+        Without this, wm-mode envs emit the raw reference for the first 24
+        frames and then jump to the GRU output at frame 25 (see process()).
+        history_frames: [len(env_ids), 25, 31] clean reference frames t-24..t.
+        """
+        if isinstance(env_ids, torch.Tensor):
+            env_ids = env_ids.detach().cpu().tolist()
+        ids = list(env_ids)
+        frames = torch.as_tensor(history_frames, device=self.device, dtype=self.history.dtype)
+        if frames.shape != (len(ids), 25, 31):
+            raise ValueError(f"Expected [{len(ids)}, 25, 31] clean prefill frames, got {tuple(frames.shape)}")
+        self.history[ids] = frames
+        self.count[ids] = 25
+        for j, i in enumerate(ids):
+            self.previous_yaw[i] = float(frames[j, -1, 3])
+        self.clean[ids] = frames[:, -1]
+        self.corrupted[ids] = frames[:, -1]
+        self.processed[ids] = frames[:, -1]
+
     @torch.no_grad()
     def process(self, clean):
         if clean.shape != (self.num_envs, 31) or clean.device != self.device:

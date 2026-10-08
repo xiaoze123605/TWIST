@@ -442,11 +442,19 @@ if __name__ == "__main__":
         action="store_true",
         help="Publish the dataset's absolute yaw instead of making the first frame yaw zero.",
     )
-    parser.add_argument(
+    reference_mode = parser.add_mutually_exclusive_group()
+    reference_mode.add_argument(
         "--reference-mode",
         choices=("raw", "wm"),
-        default="raw",
         help="raw passes the supplied reference through; wm denoises that same reference.",
+    )
+    reference_mode.add_argument(
+        "--wm", dest="reference_mode", action="store_const", const="wm",
+        help="Use Motion-WM reference processing (shortcut for --reference-mode wm).",
+    )
+    reference_mode.add_argument(
+        "--raw", dest="reference_mode", action="store_const", const="raw",
+        help="Pass through the raw reference (shortcut for --reference-mode raw).",
     )
     parser.add_argument(
         "--wm-checkpoint",
@@ -467,6 +475,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--vis", action="store_true", help="Visualize the motion")
     args = parser.parse_args()
+    if args.reference_mode is None:
+        args.reference_mode = "raw"
 
     print("Robot type: ", args.robot)
     print("Motion file: ", args.motion_file)

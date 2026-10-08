@@ -1,0 +1,11 @@
+{
+  "zero_heading_trajectory_max_joint_error": {
+    "raw": 0.0,
+    "wm": 0.0
+  },
+  "heading_feature_action_effect": 0.0002997778356075287,
+  "head_weight_norm": 0.018015941604971886,
+  "frozen_modules_preserved": true,
+  "heading_resume_smoke_passed": true,
+  "legacy23500_export_max_error": 0.0
+}

@@ -1,0 +1,29 @@
+{
+  "policies": {
+    "pilot100": {
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/reports/recovery_1250/fix_stage_20261008/pilot_100.pt",
+      "sha256": "a174e21a3f18e05ed8ce9a379313681ace5ce72424015b0112a3e37141aa3d5e"
+    }
+  },
+  "protocol_sha256": "f5cd792b6c3e0a27a0362ca21249ba9e15897903cae688f07031e24ade7dd705",
+  "case": {
+    "id": "mocap1__77",
+    "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/77.pkl",
+    "sha256": "7451b882aae0ec22bd47b68e65f32f117626a7d6c7289f3e3f1ba1ce9768fd39",
+    "seconds": 64.14,
+    "phase": "confirmation"
+  },
+  "code": {
+    "tools/evaluate_4900_fixed.py": "0c477e3fa50e7fad1e64bee30dd0831e4eb396dd417241e1596c382222101d4b",
+    "deploy_real/server_low_level_g1_sim.py": "01d8a53eaaa222ebd0de273871df5a9608d6c8e8bb1a35a32e2cfb7cc3294e19",
+    "deploy_real/server_high_level_motion_lib.py": "e84177fb6fb59d91ec2b9e5368ce550e76ad5cd130b9a77789f53f349cf51eb2"
+  },
+  "driver_sha256": "c1293c0bebe85c284b2b76c370d1a03e80aac7b4bfd620fad52e0f10b1a69608",
+  "seed": 42,
+  "headless": true,
+  "synchronized": true,
+  "action_ema_alpha": 0,
+  "target_projection": true,
+  "projection_margin": 0.02,
+  "projection_knee_min": 0.0
+}

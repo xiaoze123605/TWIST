@@ -1,0 +1,14 @@
+{
+  "status": "Experimental77 candidate; not a general deployment replacement",
+  "checkpoint": "/home/hank/TWIST（anyadapter）/legged_gym/logs/recovery_23500_heading/heading23500_gain05_pilot100_20261008/model_300.pt",
+  "jit": "/home/hank/TWIST（anyadapter）/reports/recovery_1250/fix_stage_20261008/heading_300.pt",
+  "jit_sha256": "bb178ddea18f35bcbd6ea066036071bf31ac8b4c578eaec6b5e30f88caf675eb",
+  "input_dim": 7003,
+  "adapter_gain": 0.5,
+  "target_projection_required": true,
+  "projection_margin": 0.02,
+  "projection_knee_min": 0.0,
+  "heading_context": "sin(error),1-cos(error)",
+  "evaluation": "seed42 only; full77 raw/wm and8 development motions",
+  "hardware_trial": false
+}

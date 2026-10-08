@@ -1,0 +1,32 @@
+[
+  {
+    "mode": "raw",
+    "joint_rmse": 0.13845135747192067,
+    "leg_rmse": 0.14477166773281433,
+    "velocity_rmse": 0.1090489423678984,
+    "yaw_degrees": 67.77700157659471,
+    "squat_right_hip_yaw_degrees": 15.457804381276672,
+    "squat_knee_degrees": [
+      17.44406228774344,
+      17.29710652397578
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "projection_fraction": 0.29466791393826003,
+    "fall": false
+  },
+  {
+    "mode": "wm",
+    "joint_rmse": 0.1393055066609808,
+    "leg_rmse": 0.14628024599000924,
+    "velocity_rmse": 0.10386417788948882,
+    "yaw_degrees": 32.08032461704751,
+    "squat_right_hip_yaw_degrees": 15.45928237326575,
+    "squat_knee_degrees": [
+      17.054706983599964,
+      15.751515954871897
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "projection_fraction": 0.2818833801060181,
+    "fall": false
+  }
+]

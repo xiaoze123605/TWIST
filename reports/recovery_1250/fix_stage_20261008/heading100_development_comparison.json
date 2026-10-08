@@ -1,0 +1,162 @@
+{
+  "candidate": "heading100",
+  "reference": "original23500",
+  "mean_ratio": {
+    "joint_rmse": 0.7747926421675229,
+    "root_velocity_rmse": 0.991341476166654,
+    "yaw_error": 1.296648693109988
+  },
+  "composite_gain": 0.36858923499982765,
+  "new_falls": [],
+  "worst_ratio": {
+    "joint_rmse": 0.912747005717522,
+    "root_velocity_rmse": 1.0947138059105275,
+    "yaw_error": 1.6754155839198948
+  },
+  "per_case": [
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6150931478219097,
+        "root_velocity_rmse": 0.9617779432138197,
+        "yaw_error": 0.2971793860323012
+      }
+    },
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6163141127662942,
+        "root_velocity_rmse": 0.9618504588868348,
+        "yaw_error": 0.3176674911658076
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6514542113061302,
+        "root_velocity_rmse": 0.9733609417936137,
+        "yaw_error": 1.311555342840353
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6479632210806655,
+        "root_velocity_rmse": 0.9649100396442347,
+        "yaw_error": 1.5931125892537208
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.860655851067325,
+        "root_velocity_rmse": 0.906264899103361,
+        "yaw_error": 1.2344910367373543
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8639745858348314,
+        "root_velocity_rmse": 1.0179760208842832,
+        "yaw_error": 1.35320756351009
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6767652607251765,
+        "root_velocity_rmse": 1.0947138059105275,
+        "yaw_error": 0.7198627960559932
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6778555194155901,
+        "root_velocity_rmse": 1.021338939231048,
+        "yaw_error": 0.6889927062780332
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.912747005717522,
+        "root_velocity_rmse": 1.050116744689681,
+        "yaw_error": 1.3380701435514335
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.9024534457649346,
+        "root_velocity_rmse": 1.0608444553311023,
+        "yaw_error": 1.6754155839198948
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.7360429494688377,
+        "root_velocity_rmse": 0.9234971201998939,
+        "yaw_error": 1.0609423328595216
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.7371385704198592,
+        "root_velocity_rmse": 0.922830437723577,
+        "yaw_error": 1.0910964653639381
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.8971663598769277,
+        "root_velocity_rmse": 1.016252613035617,
+        "yaw_error": 1.302951795491318
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.88519698698217,
+        "root_velocity_rmse": 0.8806282345777379,
+        "yaw_error": 1.5014151996400744
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.897767087100284,
+        "root_velocity_rmse": 0.9043982914438636,
+        "yaw_error": 1.612358965394481
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8999187123319607,
+        "root_velocity_rmse": 1.0211543880204021,
+        "yaw_error": 1.441734219387775
+      }
+    }
+  ]
+}

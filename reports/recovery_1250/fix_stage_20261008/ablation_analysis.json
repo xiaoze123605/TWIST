@@ -1,0 +1,218 @@
+[
+  {
+    "configuration": "control_unprojected",
+    "label": "gain1",
+    "mode": "raw",
+    "joint_rmse": 0.1796868140118036,
+    "leg_rmse": 0.18997517789833052,
+    "velocity_rmse": 0.10635695592115918,
+    "yaw_degrees": 89.36944402383772,
+    "squat_right_hip_yaw_degrees": 26.242128189576334,
+    "squat_knee_degrees": [
+      18.662002253951048,
+      18.787750234465424
+    ],
+    "knee_target_negative_fraction": 0.07966947302775179,
+    "knee_target_beyond_physical_fraction": 0.006392266916120985,
+    "projection_frame_fraction": 0.0,
+    "fall": false
+  },
+  {
+    "configuration": "control_unprojected",
+    "label": "gain1",
+    "mode": "wm",
+    "joint_rmse": 0.1809569372754054,
+    "leg_rmse": 0.19188821274683765,
+    "velocity_rmse": 0.10809408006414203,
+    "yaw_degrees": 72.36404032774476,
+    "squat_right_hip_yaw_degrees": 26.716794113723637,
+    "squat_knee_degrees": [
+      17.866486247051547,
+      16.891215113784217
+    ],
+    "knee_target_negative_fraction": 0.07935765512940443,
+    "knee_target_beyond_physical_fraction": 0.004677268475210477,
+    "projection_frame_fraction": 0.0,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain0",
+    "mode": "raw",
+    "joint_rmse": 0.1314530881660979,
+    "leg_rmse": 0.13586707049947735,
+    "velocity_rmse": 0.12104402526051032,
+    "yaw_degrees": 93.52568897422051,
+    "squat_right_hip_yaw_degrees": 6.572299046225035,
+    "squat_knee_degrees": [
+      15.653852599924264,
+      16.183517091018928
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.3086997193638915,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain0",
+    "mode": "wm",
+    "joint_rmse": 0.13240622431021085,
+    "leg_rmse": 0.13657424597173312,
+    "velocity_rmse": 0.12312144766023107,
+    "yaw_degrees": 65.85488160044335,
+    "squat_right_hip_yaw_degrees": 6.119941289244594,
+    "squat_knee_degrees": [
+      14.856067472365195,
+      15.06767418407176
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.30932335516058623,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain025",
+    "mode": "raw",
+    "joint_rmse": 0.13068783057144237,
+    "leg_rmse": 0.1367176383580449,
+    "velocity_rmse": 0.11021946328250372,
+    "yaw_degrees": 86.93185239650067,
+    "squat_right_hip_yaw_degrees": 10.337990811111494,
+    "squat_knee_degrees": [
+      17.068251180545086,
+      16.898976995592786
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.2737761147489866,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain025",
+    "mode": "wm",
+    "joint_rmse": 0.13083945425035182,
+    "leg_rmse": 0.136883501326828,
+    "velocity_rmse": 0.11324768864121088,
+    "yaw_degrees": 93.18597657223613,
+    "squat_right_hip_yaw_degrees": 10.972964387936203,
+    "squat_knee_degrees": [
+      16.213452306050005,
+      15.410943699017759
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.24633613969441845,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain05",
+    "mode": "raw",
+    "joint_rmse": 0.13816147638278256,
+    "leg_rmse": 0.14461106038830726,
+    "velocity_rmse": 0.10631105587138702,
+    "yaw_degrees": 69.26972507084704,
+    "squat_right_hip_yaw_degrees": 15.650612967772137,
+    "squat_knee_degrees": [
+      17.417519748338595,
+      17.26356936545403
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.2993451824134705,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain05",
+    "mode": "wm",
+    "joint_rmse": 0.140317123942311,
+    "leg_rmse": 0.14948392711719605,
+    "velocity_rmse": 0.10665901557109492,
+    "yaw_degrees": 38.640004954493435,
+    "squat_right_hip_yaw_degrees": 15.680556721715634,
+    "squat_knee_degrees": [
+      16.79830890290569,
+      15.624684857904594
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.30059245400686,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain075",
+    "mode": "raw",
+    "joint_rmse": 0.15463276838863788,
+    "leg_rmse": 0.16245574601732937,
+    "velocity_rmse": 0.11555547145797408,
+    "yaw_degrees": 66.23051284732524,
+    "squat_right_hip_yaw_degrees": 20.651917455988205,
+    "squat_knee_degrees": [
+      17.153712247497456,
+      17.361771840046472
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.3900841908325538,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain075",
+    "mode": "wm",
+    "joint_rmse": 0.1553369525630395,
+    "leg_rmse": 0.16277443341872247,
+    "velocity_rmse": 0.10908704207953289,
+    "yaw_degrees": 32.57728875109143,
+    "squat_right_hip_yaw_degrees": 20.132383115377454,
+    "squat_knee_degrees": [
+      16.24101238529721,
+      15.597836452741536
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.3872778297474275,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain1",
+    "mode": "raw",
+    "joint_rmse": 0.17858708569500087,
+    "leg_rmse": 0.18818085448146607,
+    "velocity_rmse": 0.1117181931296078,
+    "yaw_degrees": 58.87892683500087,
+    "squat_right_hip_yaw_degrees": 25.73177091817649,
+    "squat_knee_degrees": [
+      19.27572373346036,
+      18.629182247292473
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.4630495790458372,
+    "fall": false
+  },
+  {
+    "configuration": "projection_ablation",
+    "label": "gain1",
+    "mode": "wm",
+    "joint_rmse": 0.17963256483284037,
+    "leg_rmse": 0.19097548046648574,
+    "velocity_rmse": 0.11613440043903925,
+    "yaw_degrees": 39.49331785747852,
+    "squat_right_hip_yaw_degrees": 25.938809709882637,
+    "squat_knee_degrees": [
+      18.380004383188464,
+      16.39735652381222
+    ],
+    "knee_target_negative_fraction": 0.0,
+    "knee_target_beyond_physical_fraction": 0.0,
+    "projection_frame_fraction": 0.4571250389772373,
+    "fall": false
+  }
+]

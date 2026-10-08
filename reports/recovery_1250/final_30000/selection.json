@@ -1,0 +1,35 @@
+{
+  "selected": "23500_live",
+  "checkpoint": "/home/hank/TWIST（anyadapter）/legged_gym/logs/recovery_1250/coordinated_1250_seed42_20260926/model_23500.pt",
+  "policy": "/home/hank/TWIST（anyadapter）/reports/recovery_1250/best_search_23500/23500_live/policy.pt",
+  "ema": false,
+  "checkpoint_sha256": "b1d8121f30490f8e49faf460bcc0973300efe1c2d558abe8357eb4c8842b1b5d",
+  "policy_sha256": "76cd552712922a60b7c52bce8bb8e9af4d36bafed98e85502ae26838d0e4edb8",
+  "scope": "46 evaluated variants;26 new variants covering every saved step24000..30000 in both live/EMA. Earlier checkpoints sampled, not exhaustive.",
+  "baseline": "original TWIST36500 frozen backbone without Adapter",
+  "comparison4900": "pilot_gpu_seed42_200/model_4900.pt",
+  "training_complete_updates": 30000,
+  "simulation": {
+    "motion": "mocap1/77.pkl",
+    "duration": 64.14,
+    "frames": 3207,
+    "modes": [
+      "raw",
+      "wm"
+    ],
+    "seed": 42,
+    "headless": true,
+    "synchronized": true
+  },
+  "alternatives": {
+    "10000_live": "best short development gain;failed long confirmation",
+    "24000_ema": "better on77;long bootstrap confidence gate not passed",
+    "28500_ema": "long case velocity regression12.11%",
+    "30000_live": "development gain0.955%;not preferred"
+  },
+  "limits": [
+    "Single training seed and deterministic rollouts; no new hardware trial",
+    "Existing gates do not constrain per-case yaw",
+    "Baseline comparison here is on77, not a full multi-motion baseline ranking"
+  ]
+}

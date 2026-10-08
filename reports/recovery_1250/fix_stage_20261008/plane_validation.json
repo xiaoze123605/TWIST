@@ -1,0 +1,30 @@
+{
+  "updates": 100,
+  "changed_parameters": [
+    "layerwise_actor.adapter.0.weight",
+    "layerwise_actor.adapter.0.bias",
+    "layerwise_actor.adapter.1.weight",
+    "layerwise_actor.adapter.1.bias",
+    "layerwise_actor.adapter.2.weight",
+    "layerwise_actor.adapter.2.bias",
+    "layerwise_actor.adapter.3.weight",
+    "layerwise_actor.adapter.3.bias",
+    "layerwise_actor.adapter.4.weight",
+    "layerwise_actor.adapter.4.bias",
+    "layerwise_actor.adapter.5.weight",
+    "layerwise_actor.adapter.5.bias",
+    "critic.0.weight",
+    "critic.0.bias",
+    "critic.2.weight",
+    "critic.2.bias",
+    "critic.4.weight",
+    "critic.4.bias",
+    "critic.6.weight",
+    "critic.6.bias"
+  ],
+  "frozen_backbone_history_wm_unchanged": true,
+  "num_envs": 2048,
+  "geometry_tests": 2,
+  "heading_tests": 2,
+  "projection_tests": 3
+}

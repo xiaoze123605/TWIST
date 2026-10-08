@@ -1,0 +1,603 @@
+{
+  "original": {
+    "train_metrics.jsonl": {
+      "latest_update": 30000,
+      "windows": [
+        {
+          "updates": [
+            9601,
+            10000
+          ],
+          "n": 400,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 64.05449006232911,
+              "std": 6.817032043608532
+            },
+            "Train/mean_episode_length": {
+              "mean": 1046.32115,
+              "std": 111.82957575560008
+            },
+            "Loss/value_func": {
+              "mean": 0.023262240293988726,
+              "std": 0.009375098058929795
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.6117710077762606,
+              "std": 0.3029382466490771
+            }
+          }
+        },
+        {
+          "updates": [
+            19601,
+            20000
+          ],
+          "n": 400,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 64.3007520607121,
+              "std": 6.640721336465517
+            },
+            "Train/mean_episode_length": {
+              "mean": 1048.20185,
+              "std": 107.41778716338138
+            },
+            "Loss/value_func": {
+              "mean": 0.02208575787570832,
+              "std": 0.007606903959487938
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.615975746512413,
+              "std": 0.31926041277733136
+            }
+          }
+        },
+        {
+          "updates": [
+            23101,
+            23500
+          ],
+          "n": 400,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 63.390889021635616,
+              "std": 7.010908908499493
+            },
+            "Train/mean_episode_length": {
+              "mean": 1035.8945,
+              "std": 115.53872659307787
+            },
+            "Loss/value_func": {
+              "mean": 0.023411108301515923,
+              "std": 0.012892878737760124
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.6252566200494765,
+              "std": 0.3034231367866132
+            }
+          }
+        },
+        {
+          "updates": [
+            29601,
+            30000
+          ],
+          "n": 400,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 64.77219295755418,
+              "std": 6.548792563483316
+            },
+            "Train/mean_episode_length": {
+              "mean": 1056.6996250000002,
+              "std": 105.9879643219426
+            },
+            "Loss/value_func": {
+              "mean": 0.021513291776936967,
+              "std": 0.0030516044134557456
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.6064453041553497,
+              "std": 0.3154588959538728
+            }
+          }
+        }
+      ]
+    },
+    "anchor_metrics.jsonl": {
+      "latest_update": 30000,
+      "windows": [
+        {
+          "updates": [
+            9601,
+            10000
+          ],
+          "n": 400,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0019485973304169115,
+              "std": 3.736889238377946e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.000514620777903474,
+              "std": 8.394319928745792e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 2.0104798752287221e-07,
+              "std": 9.38348851489181e-10
+            },
+            "anchor_coef_effective": {
+              "mean": 0.039999999999999994,
+              "std": 6.938893903907228e-18
+            }
+          }
+        },
+        {
+          "updates": [
+            19601,
+            20000
+          ],
+          "n": 400,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.001990018254309689,
+              "std": 4.034899393441741e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.0005170506345166359,
+              "std": 8.254517544567996e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 2e-07,
+              "std": 0.0
+            },
+            "anchor_coef_effective": {
+              "mean": 0.039999999999999994,
+              "std": 6.938893903907228e-18
+            }
+          }
+        },
+        {
+          "updates": [
+            23101,
+            23500
+          ],
+          "n": 400,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0019954240385171335,
+              "std": 5.083029034969894e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.0005089245625276817,
+              "std": 8.321157264126463e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 2e-07,
+              "std": 0.0
+            },
+            "anchor_coef_effective": {
+              "mean": 0.039999999999999994,
+              "std": 6.938893903907228e-18
+            }
+          }
+        },
+        {
+          "updates": [
+            29601,
+            30000
+          ],
+          "n": 400,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0019960336865794182,
+              "std": 3.3929822528759696e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.000517945214305655,
+              "std": 8.35874866657006e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 2e-07,
+              "std": 0.0
+            },
+            "anchor_coef_effective": {
+              "mean": 0.039999999999999994,
+              "std": 6.938893903907228e-18
+            }
+          }
+        }
+      ]
+    },
+    "latest_checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_1250/coordinated_1250_seed42_20260926/model_30000.pt"
+  },
+  "heading": {
+    "train_metrics.jsonl": {
+      "latest_update": 300,
+      "windows": [
+        {
+          "updates": [
+            51,
+            100
+          ],
+          "n": 50,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 39.265340096020324,
+              "std": 6.230885701803919
+            },
+            "Train/mean_episode_length": {
+              "mean": 684.7016,
+              "std": 100.52884619570644
+            },
+            "Loss/value_func": {
+              "mean": 0.040261807741286855,
+              "std": 0.031013557593084336
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.895579290390015,
+              "std": 0.3751585048829227
+            },
+            "Episode_rew_metrics/metric_heading_tracking": {
+              "mean": 14.819459152221679,
+              "std": 2.1441099428325665
+            },
+            "Episode_rew_metrics/metric_hip_yaw_tracking": {
+              "mean": 7.292261114120484,
+              "std": 0.5240487397590883
+            },
+            "Episode_rew_metrics/metric_squat_knee_tracking": {
+              "mean": 0.8014635336399079,
+              "std": 0.23912217381491171
+            }
+          }
+        },
+        {
+          "updates": [
+            151,
+            200
+          ],
+          "n": 50,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 44.19618308849367,
+              "std": 8.08692159038986
+            },
+            "Train/mean_episode_length": {
+              "mean": 692.4603999999999,
+              "std": 113.65770265072227
+            },
+            "Loss/value_func": {
+              "mean": 0.02401258388611798,
+              "std": 0.0019615019925370717
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.071660680770874,
+              "std": 0.40066275699838755
+            },
+            "Episode_rew_metrics/metric_heading_tracking": {
+              "mean": 13.435906047821044,
+              "std": 2.4920531883607535
+            },
+            "Episode_rew_metrics/metric_hip_yaw_tracking": {
+              "mean": 7.790805940628052,
+              "std": 0.5499062474837649
+            },
+            "Episode_rew_metrics/metric_squat_knee_tracking": {
+              "mean": 0.8024298888444901,
+              "std": 0.24610622461637496
+            }
+          }
+        },
+        {
+          "updates": [
+            251,
+            300
+          ],
+          "n": 50,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 58.45427414955776,
+              "std": 6.913292038300788
+            },
+            "Train/mean_episode_length": {
+              "mean": 973.9757999999998,
+              "std": 121.30616980335336
+            },
+            "Loss/value_func": {
+              "mean": 0.024746621552233897,
+              "std": 0.0025213224816973564
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.166598687171936,
+              "std": 0.2687990715013372
+            },
+            "Episode_rew_metrics/metric_heading_tracking": {
+              "mean": 16.42211664199829,
+              "std": 2.5112407138982404
+            },
+            "Episode_rew_metrics/metric_hip_yaw_tracking": {
+              "mean": 7.911908206939697,
+              "std": 0.636998772308682
+            },
+            "Episode_rew_metrics/metric_squat_knee_tracking": {
+              "mean": 0.7513499909639358,
+              "std": 0.2128494212503262
+            }
+          }
+        }
+      ]
+    },
+    "anchor_metrics.jsonl": {
+      "latest_update": 300,
+      "windows": [
+        {
+          "updates": [
+            51,
+            100
+          ],
+          "n": 50,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0010849666390276979,
+              "std": 4.8861898199905896e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.0006718808610457927,
+              "std": 8.082896410336216e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 4.989081114752235e-07,
+              "std": 4.036913204887367e-10
+            },
+            "anchor_coef_effective": {
+              "mean": 0.07404000000000001,
+              "std": 0.001154469575172945
+            }
+          }
+        },
+        {
+          "updates": [
+            151,
+            200
+          ],
+          "n": 50,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0012974333883418391,
+              "std": 4.646476131864313e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.0006900861067697405,
+              "std": 7.590927953304505e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 4.942991828723736e-07,
+              "std": 9.259708139909458e-10
+            },
+            "anchor_coef_effective": {
+              "mean": 0.06604,
+              "std": 0.0011544695751729453
+            }
+          }
+        },
+        {
+          "updates": [
+            251,
+            300
+          ],
+          "n": 50,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.0014452614749219112,
+              "std": 3.425604217677583e-05
+            },
+            "max_rollout_kl": {
+              "mean": 0.0006985521770548075,
+              "std": 6.878362444053725e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 4.861371294856744e-07,
+              "std": 1.4260720911964494e-09
+            },
+            "anchor_coef_effective": {
+              "mean": 0.05804000000000001,
+              "std": 0.0011544695751729446
+            }
+          }
+        }
+      ]
+    },
+    "latest_checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_23500_heading/heading23500_gain05_pilot100_20261008/model_300.pt"
+  },
+  "plane": {
+    "train_metrics.jsonl": {
+      "latest_update": 100,
+      "windows": [
+        {
+          "updates": [
+            26,
+            50
+          ],
+          "n": 25,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 29.128631098283826,
+              "std": 4.439373699321577
+            },
+            "Train/mean_episode_length": {
+              "mean": 493.98040000000003,
+              "std": 62.70682313624253
+            },
+            "Loss/value_func": {
+              "mean": 0.03741356607681762,
+              "std": 0.008487517703648686
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.8133582067489624,
+              "std": 0.547501641158337
+            },
+            "Episode_rew_metrics/metric_heading_tracking": {
+              "mean": 13.70757984161377,
+              "std": 2.5119080620100926
+            },
+            "Episode_rew_metrics/metric_hip_yaw_tracking": {
+              "mean": 7.149046993255615,
+              "std": 0.40017041536405834
+            },
+            "Episode_rew_metrics/metric_squat_knee_tracking": {
+              "mean": 0.8827133619785309,
+              "std": 0.2913300573520511
+            },
+            "Episode_rew_metrics/metric_leg_plane_alignment": {
+              "mean": 0.1984223446249962,
+              "std": 0.08529899934308831
+            }
+          }
+        },
+        {
+          "updates": [
+            76,
+            100
+          ],
+          "n": 25,
+          "metrics": {
+            "Train/mean_reward": {
+              "mean": 41.30345155378878,
+              "std": 6.0854195312828
+            },
+            "Train/mean_episode_length": {
+              "mean": 700.4656,
+              "std": 91.5738148197398
+            },
+            "Loss/value_func": {
+              "mean": 0.035634758540739615,
+              "std": 0.01463103045326712
+            },
+            "Episode_rew_metrics/metric_support_slip": {
+              "mean": 2.518362741470337,
+              "std": 0.36894001908476554
+            },
+            "Episode_rew_metrics/metric_heading_tracking": {
+              "mean": 14.73883716583252,
+              "std": 3.025591208221713
+            },
+            "Episode_rew_metrics/metric_hip_yaw_tracking": {
+              "mean": 7.250950412750244,
+              "std": 0.5211763512890822
+            },
+            "Episode_rew_metrics/metric_squat_knee_tracking": {
+              "mean": 0.7389536798000336,
+              "std": 0.2967419655238822
+            },
+            "Episode_rew_metrics/metric_leg_plane_alignment": {
+              "mean": 0.17732891276478768,
+              "std": 0.157021080372438
+            }
+          }
+        }
+      ]
+    },
+    "anchor_metrics.jsonl": {
+      "latest_update": 100,
+      "windows": [
+        {
+          "updates": [
+            26,
+            50
+          ],
+          "n": 25,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.003309177972356944,
+              "std": 0.0006202062683166241
+            },
+            "max_rollout_kl": {
+              "mean": 0.0010741792293265462,
+              "std": 0.0006723307684809417
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 4.997232542496063e-07,
+              "std": 1.0171591552892354e-10
+            },
+            "anchor_coef_effective": {
+              "mean": 0.07704,
+              "std": 0.0005768882040742376
+            },
+            "posture_teacher_weight_mean": {
+              "mean": 0.007062834221869707,
+              "std": 0.0012353175469188432
+            }
+          }
+        },
+        {
+          "updates": [
+            76,
+            100
+          ],
+          "n": 25,
+          "metrics": {
+            "source_action_mae": {
+              "mean": 0.003576779918124279,
+              "std": 0.000172234880205916
+            },
+            "max_rollout_kl": {
+              "mean": 0.0007453380082733929,
+              "std": 9.376110464649088e-05
+            },
+            "skipped_minibatches": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "actor_lr": {
+              "mean": 4.985596829616516e-07,
+              "std": 2.3426159300731813e-10
+            },
+            "anchor_coef_effective": {
+              "mean": 0.07304,
+              "std": 0.0005768882040742378
+            },
+            "posture_teacher_weight_mean": {
+              "mean": 0.006917312927544117,
+              "std": 0.0009318054381654696
+            }
+          }
+        }
+      ]
+    },
+    "latest_checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_23500_plane/plane23500_from300_pilot100_env2048_20261008/model_100.pt"
+  }
+}

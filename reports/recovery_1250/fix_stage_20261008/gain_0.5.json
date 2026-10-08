@@ -1,0 +1,8 @@
+{
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_1250/coordinated_1250_seed42_20260926/model_23500.pt",
+  "checkpoint_sha256": "b1d8121f30490f8e49faf460bcc0973300efe1c2d558abe8357eb4c8842b1b5d",
+  "adapter_gain": 0.5,
+  "input_dim": 7001,
+  "output_dim": 23,
+  "eager_jit_max_abs_error": 0.0
+}

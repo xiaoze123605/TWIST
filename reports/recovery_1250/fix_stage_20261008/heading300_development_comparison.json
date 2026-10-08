@@ -1,0 +1,160 @@
+{
+  "mean_ratio": {
+    "joint_rmse": 0.7757778054885488,
+    "root_velocity_rmse": 0.9791915752795418,
+    "yaw_error": 1.2436892899128402
+  },
+  "composite_gain": 2.282461824686588,
+  "new_falls": [],
+  "worst_ratio": {
+    "joint_rmse": 0.9288227364073074,
+    "root_velocity_rmse": 1.0870592624365412,
+    "yaw_error": 1.7263854794312088
+  },
+  "per_case": [
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6138842876274546,
+        "root_velocity_rmse": 0.9579959185005863,
+        "yaw_error": 0.25810045660919956
+      }
+    },
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6150804778822633,
+        "root_velocity_rmse": 0.9576184068427788,
+        "yaw_error": 0.2841588867498302
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6508058411396511,
+        "root_velocity_rmse": 0.9686959931546465,
+        "yaw_error": 1.394548952539293
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6476863766664503,
+        "root_velocity_rmse": 0.9610305942589139,
+        "yaw_error": 1.6250286808274845
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.861722340109319,
+        "root_velocity_rmse": 0.9102204714759317,
+        "yaw_error": 1.212994277771596
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8555622118833288,
+        "root_velocity_rmse": 0.9152367022341986,
+        "yaw_error": 1.2945499749363547
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6752089502147863,
+        "root_velocity_rmse": 1.0870592624365412,
+        "yaw_error": 0.7144028688748135
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6762087708748593,
+        "root_velocity_rmse": 1.0181950083925009,
+        "yaw_error": 0.68783243767283
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.9288227364073074,
+        "root_velocity_rmse": 1.0391647768758239,
+        "yaw_error": 1.1895980700703166
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.9166077325259904,
+        "root_velocity_rmse": 1.059579867436453,
+        "yaw_error": 1.571404236251927
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.7366200318323003,
+        "root_velocity_rmse": 0.9211069418821998,
+        "yaw_error": 1.096049314066764
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.7375536457284535,
+        "root_velocity_rmse": 0.9236500141038473,
+        "yaw_error": 1.130537169328787
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.8996376459715987,
+        "root_velocity_rmse": 0.9754584148991353,
+        "yaw_error": 1.3381848071706246
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.88616002838719,
+        "root_velocity_rmse": 0.8863877084204409,
+        "yaw_error": 1.7263854794312088
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.8960061062336215,
+        "root_velocity_rmse": 0.9164220604210356,
+        "yaw_error": 1.5698473320595001
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8962148271095383,
+        "root_velocity_rmse": 1.0050777995251836,
+        "yaw_error": 1.3722636106800452
+      }
+    }
+  ]
+}

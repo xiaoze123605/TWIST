@@ -1,0 +1,142 @@
+{
+  "incumbent": "model_4900",
+  "modes": [
+    "raw",
+    "wm"
+  ],
+  "cases": [
+    {
+      "id": "accad__General_A3___Swing_Arms_While_Stand",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/General_A3___Swing_Arms_While_Stand.pkl",
+      "sha256": "17985a1494002cc20cf53a69dfdc783eb26eb23a7b49345f833430e3b4bce983",
+      "seconds": 5.68,
+      "phase": "development"
+    },
+    {
+      "id": "mocap1__1",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/1.pkl",
+      "sha256": "904a13320f9be0b5d4b286bfda744b1fb4c9052db63a1dfce40a88f24fca5da8",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mydata2__3_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/3_seg00.pkl",
+      "sha256": "9babdee4008e0f874444ad91d78912850179696a661a15ad15d04b3399e9a64a",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mydata3__42_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/42_seg00.pkl",
+      "sha256": "9228e7caa70ab6458e14912390cbb0d47d5a4bb3fb742ad9001d03a917c4133b",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mydata2__6_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/6_seg00.pkl",
+      "sha256": "ca121659d7707f24f0933d6260f5cb9b7d298f7db43015097d2556c2b61b24c8",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mocap1__20",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/20.pkl",
+      "sha256": "e9f79a18c0d3a9e7d876b769b5414e2f693119969684f7550b9ae5b747c15daf",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mydata3__47_seg01",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/47_seg01.pkl",
+      "sha256": "6856d81cfb791fb99e1fdf5c1ad2137057d8c504f840caa8df411f848da8132b",
+      "seconds": 3.38,
+      "phase": "development"
+    },
+    {
+      "id": "mocap1__59",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/59.pkl",
+      "sha256": "a84706362295b27e5f9106c60fa1ba925642d446118c583b3cf2e8bdbff2bf4e",
+      "seconds": 8.0,
+      "phase": "development"
+    },
+    {
+      "id": "mydata2__4_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/4_seg00.pkl",
+      "sha256": "a3aae2cf9eacdcb81ee25e94e7bf36e61d7b3bbae9ffca0b04ae6bf3dd96e387",
+      "seconds": 14.22,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mydata2__21_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata2/21_seg00.pkl",
+      "sha256": "0e35550dc9acf4c8ad4f117edd73c212d3e05d10794b2c1122c9cb0d9dfe2907",
+      "seconds": 30.0,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mocap1__3",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/3.pkl",
+      "sha256": "2cad626d88f8138df46fe762fc1198a7a45eb1838d600ff669084cb40d951b38",
+      "seconds": 30.0,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mocap1__23",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/23.pkl",
+      "sha256": "2bf43357f5e59058f34139dc84cfa3e688c365f6f45e625d38f665c64ac48e4a",
+      "seconds": 25.3,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mocap1__39",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/39.pkl",
+      "sha256": "0f2b0865b23593e2173c4942e8c7f92518e03d54bc013451cdd28b7896a07a0a",
+      "seconds": 30.0,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mydata3__33_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/33_seg00.pkl",
+      "sha256": "c82d86cc50e812d1b0c812ae490a0858c3f6ae21277d0e720e1cb9a0302746c3",
+      "seconds": 30.0,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mydata3__39_seg00",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mydata3/39_seg00.pkl",
+      "sha256": "68c5477ff9e67321521a56d01f8b9881dad8cb96d8824c34be0c1a8d50f7648d",
+      "seconds": 30.0,
+      "phase": "confirmation"
+    },
+    {
+      "id": "mocap1__77",
+      "motion": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/mocap1/77.pkl",
+      "sha256": "7451b882aae0ec22bd47b68e65f32f117626a7d6c7289f3e3f1ba1ce9768fd39",
+      "seconds": 64.14,
+      "phase": "confirmation"
+    }
+  ],
+  "gate": {
+    "score_weights": {
+      "joint_rmse": 0.4,
+      "root_velocity_rmse": 0.3,
+      "yaw_error": 0.3
+    },
+    "minimum_improvement": 0.01,
+    "mean_joint_velocity_regression_limit": 0.01,
+    "per_case_joint_velocity_regression_limit": 0.05,
+    "no_new_falls": true,
+    "confirmation_bootstrap_upper_ratio": 1.0,
+    "required_training_seeds": [
+      42,
+      43
+    ],
+    "required_successive_pilot_updates": [
+      50,
+      100
+    ]
+  },
+  "note": "Held out from NEW fine-tuning only; original 4900 trained on full twist_dataset. Deterministic evaluation seeds are not independent rollouts. Confirmation results will not tune candidate selection."
+}

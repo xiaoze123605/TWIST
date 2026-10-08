@@ -1,0 +1,162 @@
+{
+  "reference": "gain1 with projection",
+  "candidate": "gain05 with projection",
+  "mean_ratio": {
+    "joint_rmse": 0.7777174222318147,
+    "root_velocity_rmse": 0.9225288977338032,
+    "yaw_error": 1.1519771324985764
+  },
+  "score_gain_percent": 6.656122203756021,
+  "new_falls": [],
+  "worst_ratios": {
+    "joint_rmse": 0.9239663494861096,
+    "root_velocity_rmse": 1.071413709649419,
+    "yaw_error": 2.01189656210292
+  },
+  "per_case": [
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6207208188845854,
+        "root_velocity_rmse": 0.970302131486354,
+        "yaw_error": 0.3161236059590844
+      }
+    },
+    {
+      "case": "accad__General_A3___Swing_Arms_While_Stand",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6212915700125564,
+        "root_velocity_rmse": 0.9679897201862362,
+        "yaw_error": 0.33626359553794005
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6499667524950539,
+        "root_velocity_rmse": 0.9733352802038335,
+        "yaw_error": 1.3884447343635564
+      }
+    },
+    {
+      "case": "mocap1__1",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6469123684129964,
+        "root_velocity_rmse": 0.9669441016402879,
+        "yaw_error": 1.5544593607700665
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.8579475339531075,
+        "root_velocity_rmse": 0.7733875699468368,
+        "yaw_error": 1.3978571953433587
+      }
+    },
+    {
+      "case": "mocap1__20",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8614937210998517,
+        "root_velocity_rmse": 0.6113027486114948,
+        "yaw_error": 1.1928229801155497
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.6745462950918637,
+        "root_velocity_rmse": 1.071413709649419,
+        "yaw_error": 1.1558601731564435
+      }
+    },
+    {
+      "case": "mocap1__59",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.6766546286279154,
+        "root_velocity_rmse": 0.9869739144733429,
+        "yaw_error": 1.0636681474694083
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.9239663494861096,
+        "root_velocity_rmse": 0.999859802561351,
+        "yaw_error": 1.0372716092226149
+      }
+    },
+    {
+      "case": "mydata2__3_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.9222178435890508,
+        "root_velocity_rmse": 1.0036991347588473,
+        "yaw_error": 1.0935291625620982
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.7383233784433098,
+        "root_velocity_rmse": 0.92943075463051,
+        "yaw_error": 0.9768928273432583
+      }
+    },
+    {
+      "case": "mydata2__6_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.7396452229699375,
+        "root_velocity_rmse": 0.9257993143462179,
+        "yaw_error": 1.0984564067719333
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.8851897764549789,
+        "root_velocity_rmse": 0.8945380297428143,
+        "yaw_error": 0.7280911523858523
+      }
+    },
+    {
+      "case": "mydata3__42_seg00",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.8903083685808239,
+        "root_velocity_rmse": 1.0077473052415729,
+        "yaw_error": 2.01189656210292
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "raw",
+      "ratios": {
+        "joint_rmse": 0.905188288910443,
+        "root_velocity_rmse": 0.9225094019405398,
+        "yaw_error": 1.5100155417143122
+      }
+    },
+    {
+      "case": "mydata3__47_seg01",
+      "mode": "wm",
+      "ratios": {
+        "joint_rmse": 0.9134669885916104,
+        "root_velocity_rmse": 1.0335021336985104,
+        "yaw_error": 1.6491953408298952
+      }
+    }
+  ]
+}

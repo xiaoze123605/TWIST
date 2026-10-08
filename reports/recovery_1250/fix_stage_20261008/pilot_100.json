@@ -1,0 +1,8 @@
+{
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_23500_support/support23500_gain05_pilot100_20261008/model_100.pt",
+  "checkpoint_sha256": "37dd86a271843e9dc2fcd7295b9b0776d0dba68ae046c47c2fe8bc97acac7ace",
+  "adapter_gain": 0.5,
+  "input_dim": 7001,
+  "output_dim": 23,
+  "eager_jit_max_abs_error": 0.0
+}

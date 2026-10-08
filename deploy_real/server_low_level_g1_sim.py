@@ -15,12 +15,14 @@ import os
 from pathlib import Path
 from data_utils.rot_utils import quatToEuler, quat_rotate_inverse
 from deploy_safety import MIMIC_OBS_DIM, parse_mimic_msg
+from joint_target_projection import safe_bounds, project_numpy
 
 BASE_OBS_DIM = 1155
 ANYADAPTER_OBS_DIM = 2635
 ANYADAPTER_HEADING_OBS_DIM = 2637
 DTERA_OBS_DIM = 3695
 ANY2TRACK_OBS_DIM = 7001
+ANY2TRACK_HEADING_OBS_DIM = 7003
 NUM_ACTIONS = 23
 ANYADAPTER_HISTORY_LEN = 20
 ANYADAPTER_STATE_INDICES = list(range(31, 36)) + list(range(36, 59)) + list(range(59, 82))
@@ -33,6 +35,7 @@ SUPPORTED_POLICY_OBS_DIMS = (
     ANYADAPTER_HEADING_OBS_DIM,
     DTERA_OBS_DIM,
     ANY2TRACK_OBS_DIM,
+    ANY2TRACK_HEADING_OBS_DIM,
 )
 
 # AnyAdapter runtime support (optional)
@@ -269,9 +272,9 @@ def _should_use_anyadapter(
             "and tracking-error runtime histories automatically."
         )
         return True
-    if detected_obs_dim == ANY2TRACK_OBS_DIM:
+    if detected_obs_dim in (ANY2TRACK_OBS_DIM, ANY2TRACK_HEADING_OBS_DIM):
         print(
-            "[AnyAdapter-OpenTrack] Detected 7001-D layerwise AnyAdapter policy; "
+            f"[AnyAdapter-OpenTrack] Detected {detected_obs_dim}-D layerwise AnyAdapter policy; "
             "enabling 79-frame runtime history automatically."
         )
         return True
@@ -321,7 +324,8 @@ class RealTimePolicyController:
                  sync_reference=False,
                  trace_out=None,
                  require_dtera=False,
-                 redis_port=6379):
+                 redis_port=6379, target_projection=False,
+                 projection_margin=.02, projection_knee_min=0.):
 
         self.redis_client = None
         try:
@@ -343,9 +347,9 @@ class RealTimePolicyController:
         self.trace_rows = []
         if trace_out and (not sync_reference or not metrics_out):
             raise ValueError("Per-frame trace requires sync-reference and metrics_out")
-        self.use_any2track = self.policy_obs_dim == ANY2TRACK_OBS_DIM
+        self.use_any2track = self.policy_obs_dim in (ANY2TRACK_OBS_DIM, ANY2TRACK_HEADING_OBS_DIM)
         self.anyadapter_context_dim = (
-            2 if self.policy_obs_dim == ANYADAPTER_HEADING_OBS_DIM else 0
+            2 if self.policy_obs_dim in (ANYADAPTER_HEADING_OBS_DIM, ANY2TRACK_HEADING_OBS_DIM) else 0
         )
 
         if self.use_anyadapter:
@@ -481,6 +485,19 @@ class RealTimePolicyController:
             ])
         
         self.action_scale = 0.5
+        self.target_projection = bool(target_projection)
+        self.projection_count = 0
+        self.projection_max_delta = 0.
+        self.target_count = 0
+        joint_ids = np.arange(1, self.model.njnt)
+        names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, int(j)) for j in joint_ids]
+        self.target_lower = self.target_upper = None
+        if self.target_projection:
+            self.target_lower, self.target_upper = safe_bounds(
+                self.model.jnt_range[joint_ids, 0], self.model.jnt_range[joint_ids, 1],
+                names, projection_margin, projection_knee_min)
+        if self.target_projection and len(names) != len(self.stiffness):
+            raise ValueError('projection joint order differs from PD actuator order')
 
         
         self.ankle_idx = [4, 5, 10, 11]
@@ -755,9 +772,6 @@ class RealTimePolicyController:
                             row["dtera"] = {k: v.detach().cpu().numpy().reshape(-1).tolist() for k, v in diag.items()}
                             row["dynamics_history"] = runtime.history.tolist()
                             row["tracking_history"] = runtime.tracking_error_history.tolist()
-                        trace_stream.write(json.dumps(row) + "\n")
-                        if frame_id % 50 == 0:
-                            trace_stream.flush()
 
                     self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
@@ -766,6 +780,19 @@ class RealTimePolicyController:
                     scaled_actions = raw_action * self.action_scale
                     pd_target = scaled_actions + self.default_dof_pos
                     pd_target = aggregate_wrist_dof_pos(pd_target, wrist_dof_pos)
+                    unprojected_target = pd_target.copy()
+                    if self.target_projection:
+                        pd_target = project_numpy(pd_target, self.target_lower, self.target_upper)
+                    target_delta = np.abs(pd_target - unprojected_target)
+                    self.projection_count += int(np.any(target_delta > 1e-7))
+                    self.projection_max_delta = max(self.projection_max_delta, float(target_delta.max()))
+                    self.target_count += 1
+                    if self.trace_out:
+                        row.update(pd_target_unprojected=unprojected_target.tolist(),
+                                   pd_target=pd_target.tolist(), projection_delta=target_delta.tolist())
+                        trace_stream.write(json.dumps(row) + "\n")
+                        if frame_id % 50 == 0:
+                            trace_stream.flush()
                     # debug draw velocity arrow if you want
                     if self.viewer is not None:
                         self.viewer.user_scn.ngeom = 0
@@ -824,6 +851,14 @@ class RealTimePolicyController:
 
             if self.metrics is not None:
                 summary = self.metrics.save(self.metrics_out)
+                summary.update(target_projection=self.target_projection,
+                               projection_frames=self.projection_count,
+                               projection_frame_fraction=self.projection_count/max(1, self.target_count),
+                               projection_max_delta=self.projection_max_delta)
+                summary_path = Path(self.metrics_out)
+                if summary_path.suffix.lower() != '.json':
+                    summary_path = summary_path/'summary.json'
+                summary_path.write_text(json.dumps(summary, indent=2) + "\n")
                 print(f"Metrics summary: {summary}")
 
             if self.viewer is not None:
@@ -855,6 +890,9 @@ def main_low_level_sim(args):
         trace_out=args.trace_out,
         require_dtera=args.require_dtera,
         redis_port=args.redis_port,
+        target_projection=args.target_projection,
+        projection_margin=args.projection_margin,
+        projection_knee_min=args.projection_knee_min,
     )
     try:
         controller.run()
@@ -872,6 +910,9 @@ def main_low_level_sim(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--target-projection", action="store_true", help="Project PD targets into safe joint intervals.")
+    parser.add_argument("--projection-margin", type=float, default=.02)
+    parser.add_argument("--projection-knee-min", type=float, default=0.)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--redis-port", type=int, default=6379)
     HERE = os.path.dirname(os.path.abspath(__file__))

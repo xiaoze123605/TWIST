@@ -30,6 +30,9 @@ class G1MotionWMAnyAdapterCfg(G1MimicStuAnyAdapterV6Cfg):
         mode_probabilities = (1 / 3, 1 / 3, 1 / 3)
         corruption_preset = "formal"
         artificial_corruption = True
+        # Prefill the 25-frame GRU history with clean past references at reset
+        # so wm-mode envs are ready from frame 0 (no frame-25 output jump).
+        prefill_history = False
 
     class domain_rand(G1MimicStuAnyAdapterV6Cfg.domain_rand):
         randomize_mimic_obs = False

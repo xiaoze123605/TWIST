@@ -1,0 +1,5 @@
+{
+  "checkpoint": "/home/hank/TWIST\uff08anyadapter\uff09/legged_gym/logs/recovery_4900/transanchor_norm_seed42_20260925/model_1250.pt",
+  "sha256": "b401faa7a764cb569e2bd85f1401a3d599361c2af203572d7528dae7028ccdb8",
+  "evaluation_source": "/home/hank/TWIST\uff08anyadapter\uff09/reports/recovery_4900/transanchor_regression_20260926/dev_1250_recovered"
+}
