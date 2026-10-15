@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-def run_case(case, mode, policy, output):
+def run_case(case, mode, policy, output, *, seed=42, low_args=()):
     out = output / case['id'] / mode
     out.mkdir(parents=True, exist_ok=False)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-    env = dict(os.environ, OMP_NUM_THREADS='1', MKL_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1')
+    env = dict(os.environ, OMP_NUM_THREADS='1', MKL_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', CUDA_VISIBLE_DEVICES='')
     logs = [open(out / name, 'w') for name in ('redis.log', 'high.log', 'low.log')]
     redis = subprocess.Popen(['redis-server','--bind','127.0.0.1','--port',str(port),'--save','','--appendonly','no'],stdout=logs[0],stderr=subprocess.STDOUT)
     high = None
@@ -35,12 +35,12 @@ def run_case(case, mode, policy, output):
         high = subprocess.Popen([sys.executable,'-u',str(ROOT/'deploy_real/server_high_level_motion_lib.py'),
             '--motion_file',case['motion'],'--device','cpu','--steps','1',
             '--reference-mode',mode,'--motion-speed',str(case.get('speed',1)),
-            '--wait-for-sim-ready','--sim-ready-timeout','60','--redis-port',str(port),'--seed','42'],
+            '--wait-for-sim-ready','--sim-ready-timeout','60','--redis-port',str(port),'--seed',str(seed)],
             cwd=ROOT,env=env,stdout=logs[1],stderr=subprocess.STDOUT)
         subprocess.run([sys.executable,'-u',str(ROOT/'deploy_real/server_low_level_g1_sim.py'),
             '--policy_path',str(policy),'--device','cpu','--headless','--sync-reference',
             '--sim_duration',str(case['seconds']),'--metrics_out',str(out/'metrics.json'),
-            '--redis-port',str(port),'--seed','42'],cwd=ROOT,env=env,stdout=logs[2],stderr=subprocess.STDOUT,
+            '--redis-port',str(port),'--seed',str(seed),*low_args],cwd=ROOT,env=env,stdout=logs[2],stderr=subprocess.STDOUT,
             check=True,timeout=case['seconds']+120)
         metrics=json.loads((out/'metrics.json').read_text())
         expected=round(case['seconds']*50)

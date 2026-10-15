@@ -1,0 +1,18 @@
+root_path: "../../track_dataset/twist_motion_dataset"
+motions:
+  - file: accad/B3___walk1.pkl
+    weight: 2.0
+  - file: transitions/walksideways_walk.pkl
+    weight: 1.0
+  - file: transitions/turntwist_walk.pkl
+    weight: 1.0
+  - file: transitions/walkbackwards_stand.pkl
+    weight: 1.0
+  - file: transitions/run_walk.pkl
+    weight: 1.0
+  - file: transitions/crouchwalk_stand.pkl
+    weight: 5.0
+  - file: transitions/kick_walk.pkl
+    weight: 1.0
+  - file: transitions/punchboxing_walk.pkl
+    weight: 1.0

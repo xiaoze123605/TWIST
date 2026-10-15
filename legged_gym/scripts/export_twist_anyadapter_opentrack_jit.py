@@ -54,7 +54,7 @@ def build_actor(checkpoint):
         from tools.heading23500_actor import TwistHeadingSupportActorCritic
         actor_class = TwistHeadingSupportActorCritic
     actor = actor_class(
-        num_actions=NUM_ACTIONS, num_critic_observations=1318,
+        num_actions=NUM_ACTIONS, num_critic_observations=state["model_state_dict"]["critic.0.weight"].shape[1],
         base_actor_jit_path=BASE_JIT, base_obs_dim=BASE_OBS_DIM,
         history_len=HISTORY_LEN, history_frame_dim=HISTORY_FRAME_DIM,
         hist_state_dim=51, wm_target_indices=WM_TARGET_INDICES, latent_dim=128,

@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "errors": [],
+  "source_root": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset",
+  "motions": [
+    {
+      "file": "accad/B3___walk1.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/accad/B3___walk1.pkl",
+      "sha256": "ee25979f7d3b2cb38383096a4003fc91e5b61480a9e4e0530156ec8f56b0dacc",
+      "frames": 229,
+      "fps": 29.934354485776808,
+      "duration_s": 7.616666666666666,
+      "max_quaternion_norm_error": 0.021786928176879883,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/walksideways_walk.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/walksideways_walk.pkl",
+      "sha256": "23cf14b7727e37e6e93dd3d67a6b145cdf31fafd933c61ce76e7cc06b8fe7bc0",
+      "frames": 257,
+      "fps": 29.970731707317075,
+      "duration_s": 8.541666666666666,
+      "max_quaternion_norm_error": 0.03016948699951172,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/turntwist_walk.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/turntwist_walk.pkl",
+      "sha256": "8f69eee12d3d2be8803369b374c26ea92cfdea79dcb231e59da3982bfef6e21e",
+      "frames": 274,
+      "fps": 29.97255260750229,
+      "duration_s": 9.108333333333333,
+      "max_quaternion_norm_error": 0.02532261610031128,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/walkbackwards_stand.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/walkbackwards_stand.pkl",
+      "sha256": "8159a19a0b2b8067b8aeba4ab510d1067d8c65ecc484c276f992b177bbd52dcc",
+      "frames": 237,
+      "fps": 30.0,
+      "duration_s": 7.866666666666666,
+      "max_quaternion_norm_error": 0.026220977306365967,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/run_walk.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/run_walk.pkl",
+      "sha256": "cbe3015f6024bb6f5c5876be062ff7751d18f00a28fa39f3149bccfeeb6a153b",
+      "frames": 318,
+      "fps": 30.0,
+      "duration_s": 10.566666666666666,
+      "max_quaternion_norm_error": 0.03445577621459961,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/kick_walk.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/kick_walk.pkl",
+      "sha256": "bb4ade92fc55ca10e064c96ec530453b0f100c1600a86d1c992c65c313fb7f15",
+      "frames": 291,
+      "fps": 29.974160206718345,
+      "duration_s": 9.675,
+      "max_quaternion_norm_error": 0.036200881004333496,
+      "dof_count": 23
+    },
+    {
+      "file": "transitions/punchboxing_walk.pkl",
+      "path": "/home/hank/TWIST\uff08anyadapter\uff09/track_dataset/twist_motion_dataset/transitions/punchboxing_walk.pkl",
+      "sha256": "38f04ab37e20bd3815742beead68f8e8e98c6fb1a688c6ab93eed1bf728925ad",
+      "frames": 244,
+      "fps": 29.938398357289525,
+      "duration_s": 8.116666666666667,
+      "max_quaternion_norm_error": 0.029893040657043457,
+      "dof_count": 23
+    }
+  ],
+  "splits": {
+    "train": {
+      "motions": 7,
+      "frames": 1850
+    }
+  },
+  "split_yaml_sha256": {
+    "train": "4992b1affb41e079d0438ee4f7b9b5dee69c4457dde8c3b060b19f66717c2a07"
+  }
+}

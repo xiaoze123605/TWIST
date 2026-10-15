@@ -325,7 +325,8 @@ class RealTimePolicyController:
                  trace_out=None,
                  require_dtera=False,
                  redis_port=6379, target_projection=False,
-                 projection_margin=.02, projection_knee_min=0.):
+                 projection_margin=.02, projection_knee_min=0., dynamics_diagnostics=False,
+                 diagnostics_core_policy=None):
 
         self.redis_client = None
         try:
@@ -393,6 +394,12 @@ class RealTimePolicyController:
         self.model = mujoco.MjModel.from_xml_path(xml_file)
         self.model.opt.timestep = 0.001
         self.data = mujoco.MjData(self.model)
+        self.dynamics_diagnostics = None
+        if dynamics_diagnostics:
+            if not trace_out or not self.use_anyadapter:
+                raise ValueError("Dynamics diagnostics require an AnyAdapter policy and synchronized trace")
+            from sim_dynamics_diagnostics import DynamicsDiagnostics
+            self.dynamics_diagnostics = DynamicsDiagnostics(self.model, diagnostics_core_policy)
         
         # Print DoF names in order
         print("Degrees of Freedom (DoF) names and their order:")
@@ -773,6 +780,19 @@ class RealTimePolicyController:
                             row["dynamics_history"] = runtime.history.tolist()
                             row["tracking_history"] = runtime.tracking_error_history.tolist()
 
+                        if os.environ.get('TWIST_FIRST_UPDATE_DIAGNOSTICS') == '1':
+                            # Store the exact consumed input without a second forward,
+                            # history update, random draw or change to executed action.
+                            sidecar = str(self.trace_out) + '.actor_inputs.npy'
+                            if frame_id == 0:
+                                self._actor_input_trace = np.lib.format.open_memmap(
+                                    sidecar, mode='w+', dtype=np.float32,
+                                    shape=(round(self.sim_duration*50), len(self.anyadapter_runtime.last_policy_obs)))
+                            self._actor_input_trace[frame_id] = self.anyadapter_runtime.last_policy_obs
+                            row['actor_observation_file'] = sidecar
+                            row['actor_observation_index'] = frame_id
+                            row['actor_history_last_completed_frame'] = frame_id-1
+
                     self._print_policy_debug_stats(i, action_mimic, obs_proprio, raw_action)
                     
                     self.last_action = raw_action
@@ -790,9 +810,12 @@ class RealTimePolicyController:
                     if self.trace_out:
                         row.update(pd_target_unprojected=unprojected_target.tolist(),
                                    pd_target=pd_target.tolist(), projection_delta=target_delta.tolist())
-                        trace_stream.write(json.dumps(row) + "\n")
-                        if frame_id % 50 == 0:
-                            trace_stream.flush()
+                        if self.dynamics_diagnostics is not None:
+                            self.dynamics_diagnostics.begin(row, self.data, self.anyadapter_runtime, self.torque_limits, pd_target)
+                        else:
+                            trace_stream.write(json.dumps(row) + "\n")
+                            if frame_id % 50 == 0:
+                                trace_stream.flush()
                     # debug draw velocity arrow if you want
                     if self.viewer is not None:
                         self.viewer.user_scn.ngeom = 0
@@ -811,11 +834,18 @@ class RealTimePolicyController:
 
                 # PD control
                 torque = (pd_target - whole_body_dof) * self.stiffness - whole_body_dof_vel * self.damping
+                requested_torque = torque
                 torque = np.clip(torque, -self.torque_limits, self.torque_limits)
+                if self.dynamics_diagnostics is not None:
+                    self.dynamics_diagnostics.observe(requested_torque, torque)
                 
                 self.data.ctrl[:] = torque
                 
                 mujoco.mj_step(self.model, self.data)
+                if self.dynamics_diagnostics is not None and (i + 1) % self.sim_decimation == 0:
+                    trace_stream.write(json.dumps(self.dynamics_diagnostics.finish()) + "\n")
+                    if frame_id % 50 == 0:
+                        trace_stream.flush()
                 # sleep to maintain real-time pace
                 target_wall_time = wall_start + (i + 1) * self.sim_dt
                 remaining = target_wall_time - time.perf_counter()
@@ -893,6 +923,8 @@ def main_low_level_sim(args):
         target_projection=args.target_projection,
         projection_margin=args.projection_margin,
         projection_knee_min=args.projection_knee_min,
+        dynamics_diagnostics=args.dynamics_diagnostics,
+        diagnostics_core_policy=args.diagnostics_core_policy,
     )
     try:
         controller.run()
@@ -932,6 +964,8 @@ if __name__ == "__main__":
                         
     parser.add_argument("--record_video", action="store_true", help="Record a video")
     parser.add_argument("--trace_out", default=None)
+    parser.add_argument("--dynamics-diagnostics", action="store_true", help="Record COM/contact/posture and all substep torque saturation without changing control")
+    parser.add_argument("--diagnostics-core-policy", default=None, help="Optional same-observation JIT with heading head disabled, for contribution measurement")
     parser.add_argument('--plot-dir', default=None,
                         help='New directory for synchronized trace, CSV and diagnostic PNG curves; requires high-level motion server.')
     parser.add_argument("--require-dtera", action="store_true")

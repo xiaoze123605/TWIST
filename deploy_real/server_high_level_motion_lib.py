@@ -315,6 +315,11 @@ def main(args, xml_file, robot_base):
                     trace=reference_trace,
                 )
                 reference_trace["reference_pipeline_ms"] = (time.perf_counter() - wm_start) * 1000
+                if os.environ.get('TWIST_FIRST_UPDATE_DIAGNOSTICS') == '1':
+                    reference_trace['reference_frame_index'] = global_frame_id
+                    reference_trace['reference_wm_ready'] = refiner.ready if refiner else False
+                    reference_trace['reference_wm_history'] = [x.tolist() for x in refiner.history] if refiner else None
+                    reference_trace['reference_wm_previous_input_yaw'] = refiner._previous_input_yaw if refiner else None
                 if vis_root_vel:
                     root_vel_list.append(root_vel)
                 if vis_root_ang_vel:

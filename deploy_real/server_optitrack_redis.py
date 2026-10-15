@@ -25,11 +25,11 @@ import mujoco
 import mujoco.viewer
 
 from general_motion_retargeting import GeneralMotionRetargeting as GMR
-from general_motion_retargeting import RobotMotionViewer
 from general_motion_retargeting.optitrack_vendor.NatNetClient import setup_optitrack
 from general_motion_retargeting.utils.realtime_filter import (
     RealtimeMotionFilter, BufferSmoother,
 )
+from optitrack_realtime import LatestPoseViewer, neutral_leg_scales
 from data_utils.params import DEFAULT_ACTION_HAND, DEFAULT_MIMIC_OBS
 from data_utils.rot_utils import quatToEuler, quat_rotate_inverse
 # ── Helpers (same as v2 server) ─────────────────────────────────────────────
@@ -154,11 +154,11 @@ def _limit_qpos_jump(qpos, previous, max_root_jump=0.25, max_joint_jump=0.45):
 
 def _pose_safety_reason(
     qpos,
-    min_root_height=0.65,
+    min_root_height=0.35,
     max_root_height=1.05,
-    max_root_tilt=0.5,
+    max_root_tilt=1.0,
     max_knee=2.4,
-    max_knee_asymmetry=1.2,
+    max_knee_asymmetry=2.4,
 ):
     """Return a reason when an IK solution is outside the live G1 envelope."""
     qpos = np.asarray(qpos, dtype=float)
@@ -271,6 +271,9 @@ class OptiTrackRedisServer:
             damping=args.gmr_damping,
             use_velocity_limit=not args.no_velocity_limit,
         )
+        self.gmr.max_iter = args.ik_extra_iterations
+        # Velocity limits must use the actual mocap output period.
+        self.gmr.model.opt.timestep = 1.0 / args.freq
         if not args.enable_table1:
             self.gmr.use_ik_match_table1 = False
             print("[GMR] table1 disabled; using position-aware table2")
@@ -318,10 +321,14 @@ class OptiTrackRedisServer:
         # ── Viewer (exact copy from optitrack_to_robot.py) ──
         self.viewer = None
         if args.vis:
-            self.viewer = RobotMotionViewer(robot_type=tgt)
+            if os.environ.get("DISPLAY"):
+                self.viewer = LatestPoseViewer(tgt, args.vis_freq)
+            else:
+                print("[Viewer] no DISPLAY; continuing without visualization")
 
         # ── Redis ──
-        self.redis = redis.Redis(host="localhost", port=6379, db=0)
+        self.redis = redis.Redis(host="localhost", port=6379, db=0,
+                                 socket_connect_timeout=.2, socket_timeout=.2)
 
         # ── Post-IK filter state (streaming Butterworth for root + legs) ──
         self._bw_sos_pos = None; self._bw_zi_pos = None
@@ -435,15 +442,24 @@ class OptiTrackRedisServer:
         self._dropped_frame_count += dropped
         return self._decode_mocap_data(mocap_data)
 
-    def _pose_safety_reason(self, qpos):
+    def _pose_safety_reason(self, qpos, *, ground_aligned=True):
         return _pose_safety_reason(
             qpos,
-            min_root_height=self.args.min_root_height,
-            max_root_height=self.args.max_root_height,
+            min_root_height=self.args.min_root_height if ground_aligned else -np.inf,
+            max_root_height=self.args.max_root_height if ground_aligned else np.inf,
             max_root_tilt=self.args.max_root_tilt,
             max_knee=self.args.max_knee,
             max_knee_asymmetry=self.args.max_knee_asymmetry,
         )
+
+    def _report_pose_rejection(self, stage, reason):
+        # A held pose looks like a stalled mocap stream; expose the cause even
+        # without --debug, but avoid blocking the loop with per-frame logging.
+        now = time.monotonic()
+        if now - getattr(self, "_last_rejection_log", -np.inf) >= 1.0:
+            print(f"[GMR][{stage} REJECT] {reason}; holding previous pose "
+                  f"(total rejected={self._rejected_pose_count})")
+            self._last_rejection_log = now
 
     def _sync_gmr_configuration(self, qpos):
         """Keep GMR's warm start aligned with the protected output qpos."""
@@ -477,15 +493,16 @@ class OptiTrackRedisServer:
         """Real-time equivalent of offline clean_qpos (bvh_to_robot_new.py).
 
         Offline: 4th-order zero-phase Butterworth at 5 Hz on ALL dofs.
-        Real-time: 4th-order causal Butterworth at 5 Hz on root+legs+waist,
+        Real-time: configurable causal Butterworth (default order 2, 8 Hz)
+        on root+legs+waist,
         plus a lighter configurable arm filter.
 
         Also: velocity clip at 30 rad/s + joint-limit clip at 5 deg.
         """
         from scipy.signal import butter, sosfilt, sosfilt_zi
         out = qpos.copy()
-        CUTOFF = 5.0   # Hz — match offline clean_qpos
-        ORDER = 4       # match offline clean_qpos
+        CUTOFF = float(self.args.leg_filter_cutoff)
+        ORDER = int(self.args.filter_order)
         FS = float(self.args.freq)
 
         # ── Root position (x, y, z) ──
@@ -590,6 +607,43 @@ class OptiTrackRedisServer:
         out[2] += self._ground_shift
         return out, None, min_foot_z + self._ground_shift
 
+    def _calibrate_standing_legs(self, first_frame):
+        print("[Calibration] stand naturally with straight legs for 1 second")
+        frames = [first_frame]
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            frame = self._get_latest_frame(timeout=.05)
+            if frame is not None:
+                frames.append(frame)
+        data = mujoco.MjData(self.gmr.model)
+        data.qpos[:] = self.gmr.model.qpos0
+        data.qpos[3:7] = [1.,0.,0.,0.]
+        data.qpos[7:] = 0.
+        # Slightly unlock the knee singularity without imposing a crouch.
+        data.qpos[7+3] = data.qpos[7+9] = .04
+        data.qpos[7+0] = data.qpos[7+6] = -.02
+        data.qpos[7+4] = data.qpos[7+10] = -.02
+        mujoco.mj_forward(self.gmr.model, data)
+        pelvis_id = mujoco.mj_name2id(self.gmr.model,mujoco.mjtObj.mjOBJ_BODY,'pelvis')
+        spans = {}
+        for side in ('Left','Right'):
+            foot_id = mujoco.mj_name2id(self.gmr.model,mujoco.mjtObj.mjOBJ_BODY,side.lower()+'_toe_link')
+            if pelvis_id < 0 or foot_id < 0:
+                print("[Calibration] model lacks pelvis/toe landmarks; keeping configured scale")
+                return frames[-1]
+            spans[side] = float(data.xpos[pelvis_id,2]-data.xpos[foot_id,2])
+        try:
+            factors = neutral_leg_scales(frames,spans,self.gmr.human_scale_table)
+        except ValueError as exc:
+            print(f"[Calibration] {exc}; keeping configured scale. Restart while standing neutrally.")
+            return frames[-1]
+        for side,factor in factors.items():
+            for suffix in ('UpLeg','Leg','ToeBase'):
+                name=side+suffix
+                self.gmr.human_scale_table[name] *= factor
+        print(f"[Calibration] leg scale factors: L={factors['Left']:.3f} R={factors['Right']:.3f}")
+        return frames[-1]
+
     def safe_stand(self, freq=50, seconds=2.0):
         target = DEFAULT_MIMIC_OBS[self.robot_type].copy()
         steps = max(int(seconds*freq), 1)
@@ -602,7 +656,7 @@ class OptiTrackRedisServer:
         print("[Safe Stand] Done")
 
     def run(self, freq=50, debug_arms=False):
-        max_cutoff = max(5.0, float(self.args.arm_filter_cutoff))
+        max_cutoff = max(float(self.args.leg_filter_cutoff), float(self.args.arm_filter_cutoff))
         if freq <= 2.0 * max_cutoff:
             raise ValueError(
                 f"--freq must be greater than {2.0 * max_cutoff:g} Hz "
@@ -632,6 +686,8 @@ class OptiTrackRedisServer:
                 )
                 last_wait_warning = now
             time.sleep(0.02)
+        if self.robot_type == "g1" and not self.args.no_leg_calibration:
+            frame = self._calibrate_standing_legs(frame)
         frame = self.motion_filter(frame)
         frame = self.median_filter(frame)
         first_qpos = np.asarray(self.gmr.retarget(frame), dtype=float)
@@ -645,7 +701,7 @@ class OptiTrackRedisServer:
             max_root_jump=self.args.max_root_jump,
             max_joint_jump=self.args.max_joint_jump,
         )
-        first_reject_reason = self._pose_safety_reason(first_qpos)
+        first_reject_reason = self._pose_safety_reason(first_qpos, ground_aligned=False)
         if first_reject_reason is not None:
             raise RuntimeError(
                 f"Unsafe first GMR pose: {first_reject_reason}. "
@@ -699,6 +755,9 @@ class OptiTrackRedisServer:
         period = 1.0 / freq
         next_tick = first_sample_t
         frame_count = 0
+        stats_start = first_sample_t
+        stats_count = 0
+        stats_ik_ms = []
         print("[Teleop] Running ...")
 
         while True:
@@ -710,7 +769,7 @@ class OptiTrackRedisServer:
                 next_tick = time.monotonic()
 
             # Get frame (line 153)
-            frame = self._get_latest_frame(timeout=5.0)
+            frame = self._get_latest_frame(timeout=period)
             if frame is None or len(frame) == 0:
                 continue
             if 'Hips' not in frame:
@@ -721,19 +780,20 @@ class OptiTrackRedisServer:
             frame = self.median_filter(frame)
 
             # Retarget (line 196)
+            ik_start = time.monotonic()
             qpos = np.asarray(self.gmr.retarget(frame), dtype=float)
+            stats_ik_ms.append((time.monotonic()-ik_start)*1000)
             qpos = _lock_raw_wrist_joints(
                 qpos,
                 enabled=(self.robot_type == "g1" and not self.args.unlock_raw_wrist),
             )
-            reject_reason = self._pose_safety_reason(qpos)
+            reject_reason = self._pose_safety_reason(qpos, ground_aligned=False)
             if reject_reason is not None and self._last_safe_qpos is not None:
                 self._rejected_pose_count += 1
                 qpos = self._last_safe_qpos.copy()
                 self._sync_gmr_configuration(qpos)
                 jumped = False
-                if self.args.debug and self._rejected_pose_count % 30 == 1:
-                    print(f"[GMR][REJECT] {reject_reason}; holding last safe pose")
+                self._report_pose_rejection("IK", reject_reason)
             else:
                 qpos, jumped = _limit_qpos_jump(
                     qpos,
@@ -768,26 +828,9 @@ class OptiTrackRedisServer:
             if aligned_reason is not None and self._last_output_qpos is not None:
                 self._rejected_pose_count += 1
                 qpos_filt = self._last_output_qpos.copy()
-                if self.args.debug and self._rejected_pose_count % 30 == 1:
-                    print(
-                        f"[GMR][OUTPUT REJECT] {aligned_reason}; "
-                        "holding last aligned pose"
-                    )
+                self._report_pose_rejection("OUTPUT", aligned_reason)
             else:
                 self._last_output_qpos = qpos_filt.copy()
-
-            # Display exactly the protected reference used to build Redis obs,
-            # rather than an unsafe raw IK solution.
-            if self.viewer is not None:
-                try:
-                    self.viewer.step(
-                        root_pos=qpos_filt[:3],
-                        root_rot=qpos_filt[3:7],
-                        dof_pos=qpos_filt[7:],
-                        rate_limit=False,
-                    )
-                except Exception as exc:
-                    print(f"[Viewer][WARN] {exc!r}")
 
             # Velocity via timestamped regression over recent output frames.
             sample_t = time.monotonic()
@@ -837,6 +880,30 @@ class OptiTrackRedisServer:
 
             self._publish(obs, frame_id=frame_count)
 
+            # Display exactly the protected reference used to build Redis obs,
+            # rather than an unsafe raw IK solution.
+            if self.viewer is not None:
+                try:
+                    self.viewer.step(
+                        root_pos=qpos_filt[:3],
+                        root_rot=qpos_filt[3:7],
+                        dof_pos=qpos_filt[7:],
+                        rate_limit=False,
+                    )
+                except Exception as exc:
+                    print(f"[Viewer][WARN] {exc!r}")
+
+
+            stats_count += 1
+            stats_now = time.monotonic()
+            if stats_now-stats_start >= 2.0:
+                measured_hz = stats_count/(stats_now-stats_start)
+                if self.args.debug or measured_hz < .85*freq:
+                    print(f"[Timing] output={measured_hz:.1f}/{freq:g}Hz "
+                          f"IK_p95={np.percentile(stats_ik_ms,95):.1f}ms "
+                          f"dropped={self._dropped_frame_count} rejected={self._rejected_pose_count}")
+                stats_start=stats_now; stats_count=0; stats_ik_ms=[]
+
             if self.args.debug and frame_count % max(int(2.0 * freq), 1) == 0:
                 dof = qpos_filt[7:]
                 print(
@@ -870,6 +937,11 @@ def main():
                         help="GMR processing/Redis output rate in Hz")
     parser.add_argument("--arm_filter_cutoff", type=float, default=8.0,
                         help="causal arm DoF low-pass cutoff in Hz; 0 disables")
+    parser.add_argument("--vis_freq", type=float, default=30.0, help="independent visualization rate")
+    parser.add_argument("--ik_extra_iterations", type=int, default=2, help="extra IK solves per frame after the initial solve")
+    parser.add_argument("--leg_filter_cutoff", type=float, default=8.0, help="root/leg filter cutoff in Hz")
+    parser.add_argument("--filter_order", type=int, default=2, choices=[1,2,4])
+    parser.add_argument("--no_leg_calibration", action="store_true", help="keep configured limb scales without standing calibration")
     parser.add_argument("--actual_human_height", type=float, default=1.6)
     parser.add_argument("--gmr_damping", type=float, default=1.0)
     parser.add_argument("--pelvis_task_cost", type=float, default=100.0,
@@ -885,11 +957,14 @@ def main():
                         help="allow raw GMR wrist roll/pitch/yaw in qpos")
     parser.add_argument("--max_root_jump", type=float, default=0.25)
     parser.add_argument("--max_joint_jump", type=float, default=0.20)
-    parser.add_argument("--min_root_height", type=float, default=0.65)
+    parser.add_argument("--min_root_height", type=float, default=0.35,
+                        help="minimum pelvis height AFTER foot-ground alignment; permits crouching")
     parser.add_argument("--max_root_height", type=float, default=1.05)
-    parser.add_argument("--max_root_tilt", type=float, default=0.5)
+    parser.add_argument("--max_root_tilt", type=float, default=1.0,
+                        help="maximum absolute torso roll/pitch in radians (allows forward lean in crouches)")
     parser.add_argument("--max_knee", type=float, default=2.4)
-    parser.add_argument("--max_knee_asymmetry", type=float, default=1.2)
+    parser.add_argument("--max_knee_asymmetry", type=float, default=2.4,
+                        help="maximum knee-angle difference; allows independent leg lifts")
     parser.add_argument("--no_ground_align", action="store_true",
                         help="disable output-side G1 foot FK ground alignment")
     parser.add_argument("--foot_ground_clearance", type=float, default=0.035,
@@ -911,6 +986,12 @@ def main():
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
+    if args.leg_filter_cutoff <= 0 or args.arm_filter_cutoff < 0:
+        parser.error("leg cutoff must be positive and arm cutoff nonnegative")
+    if args.freq <= 2*max(args.leg_filter_cutoff,args.arm_filter_cutoff):
+        parser.error("--freq must exceed twice the filter cutoff")
+    if args.ik_extra_iterations < 0 or args.vis_freq <= 0:
+        parser.error("IK iterations must be nonnegative and visualization rate positive")
     server = OptiTrackRedisServer(args)
     try:
         server.run(freq=args.freq, debug_arms=args.debug_arms)
@@ -921,6 +1002,8 @@ def main():
             server.safe_stand(freq=args.freq, seconds=1.0)
         except Exception as exc:
             print(f"[Safe Stand][WARN] {exc!r}")
+        if server.viewer is not None:
+            server.viewer.close()
         try:
             server.client.shutdown()
         except Exception:
