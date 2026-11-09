@@ -1,0 +1,18 @@
+{
+  "description": "本地TWIST数据清单：按完整源动作保留评价集合，缺失文件在转换结果中单独记录",
+  "missing_files": ["mocap1/6.pkl"],
+  "protected_motions": {
+    "0": "mydata2/1_seg00.pkl",
+    "9072": "omomo/sub1_mop_028.pkl",
+    "78": "mydata3/49_seg00.pkl",
+    "3728": "kit/shower_left_arm07.pkl",
+    "11220": "omomo/sub12_plasticbox_002.pkl",
+    "7124": "bmlmovi/Subject_71_F_6.pkl",
+    "10610": "omomo/sub3_monitor_026.pkl",
+    "6269": "bmlmovi/Subject_60_F_7.pkl",
+    "mocap1__77": "mocap1/77.pkl",
+    "mocap1__20": "mocap1/20.pkl",
+    "11518": "omomo/sub1_clothesstand_065.pkl",
+    "8778": "omomo/sub14_suitcase_004.pkl"
+  }
+}
